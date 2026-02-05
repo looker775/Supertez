@@ -1,0 +1,1298 @@
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { supabase, getUserProfile } from '../lib/supabase';
+import { setLanguageByCountry } from '../i18n';
+import { detectLocationFromIp } from '../lib/geo';
+import { 
+  MapPin, 
+  Navigation, 
+  Loader2,
+  AlertCircle,
+  Car,
+  RefreshCw
+} from 'lucide-react';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import { LatLngTuple } from 'leaflet';
+import { useTranslation } from 'react-i18next';
+
+// Types
+interface Ride {
+  id: string;
+  client_id: string;
+  pickup_lat: number;
+  pickup_lng: number;
+  pickup_address: string;
+  pickup_city: string;
+  drop_lat: number;
+  drop_lng: number;
+  drop_address: string;
+  distance_km: number;
+  passengers: number;
+  base_price: number;
+  final_price: number;
+  status: string;
+  created_at: string;
+}
+
+interface DriverLocation {
+  lat: number;
+  lng: number;
+  city: string;
+  countryCode?: string;
+}
+
+interface RideMessage {
+  id: string;
+  ride_id: string;
+  sender_id: string;
+  sender_role: 'client' | 'driver';
+  message: string;
+  created_at: string;
+}
+
+async function reverseGeocodeCity(
+  lat: number,
+  lng: number
+): Promise<{ city: string; countryCode?: string }> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`
+    );
+    const data = await response.json();
+    const city = data.address?.city ||
+      data.address?.town ||
+      data.address?.village ||
+      data.address?.county ||
+      data.address?.state ||
+      'Unknown';
+    const countryCode = data.address?.country_code
+      ? String(data.address.country_code).toUpperCase()
+      : undefined;
+    return { city, countryCode };
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    return { city: 'Unknown', countryCode: undefined };
+  }
+}
+
+function isSecureContextAvailable() {
+  return (
+    window.isSecureContext ||
+    window.location.protocol === 'https:' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+}
+
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Custom icons
+const pickupIcon = L.divIcon({
+  className: 'custom-div-icon',
+  html: `<div style="background-color: #10B981; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+      <circle cx="12" cy="12" r="10"/>
+      <circle cx="12" cy="12" r="4"/>
+    </svg>
+  </div>`,
+  iconSize: [36, 36],
+  iconAnchor: [18, 18]
+});
+
+const driverIcon = L.divIcon({
+  className: 'custom-div-icon',
+  html: `<div style="background-color: #3B82F6; width: 40px; height: 40px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+      <path d="M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0M5 17H3v-4h18v4h-2M5 17v-6h14v6"/>
+    </svg>
+  </div>`,
+  iconSize: [40, 40],
+  iconAnchor: [20, 20]
+});
+
+const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
+const MAPTILER_STYLE = import.meta.env.VITE_MAPTILER_STYLE || 'streets-v2';
+const MAPTILER_FORMAT = /satellite|hybrid/i.test(MAPTILER_STYLE) ? 'jpg' : 'png';
+const MAPTILER_TILE_URL = MAPTILER_KEY
+  ? `https://api.maptiler.com/maps/${MAPTILER_STYLE}/{z}/{x}/{y}.${MAPTILER_FORMAT}?key=${MAPTILER_KEY}`
+  : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const MAPTILER_ATTRIBUTION = MAPTILER_KEY
+  ? '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+// Map center handler
+function MapCenterHandler({ center }: { center: LatLngTuple }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center, map]);
+  return null;
+}
+
+export default function DriverDashboard() {
+  const { t } = useTranslation();
+  // State
+  const [profile, setProfile] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
+  const [availableRides, setAvailableRides] = useState<Ride[]>([]);
+  const [activeRide, setActiveRide] = useState<Ride | null>(null);
+  const [settings, setSettings] = useState<any>(null);
+  const [clientProfile, setClientProfile] = useState<{ full_name?: string; phone?: string } | null>(null);
+  const [chatMessages, setChatMessages] = useState<RideMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const lastLocationUpdateRef = useRef(0);
+  const [lastReadAt, setLastReadAt] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [mapError, setMapError] = useState(false);
+  const [showClientPhone, setShowClientPhone] = useState(false);
+  const [rideNotification, setRideNotification] = useState<{ title: string; message: string } | null>(null);
+  const notificationTimerRef = useRef<number | null>(null);
+  const prevRideIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedRidesRef = useRef(false);
+  
+  // UI State
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [mapCenter, setMapCenter] = useState<LatLngTuple>([43.238949, 76.889709]);
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'ready' | 'denied' | 'unsupported'>('idle');
+  const [gpsMessage, setGpsMessage] = useState('');
+
+  const playNotificationSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const gain = ctx.createGain();
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+      osc1.frequency.value = 523.25; // C5
+      osc2.frequency.value = 659.25; // E5
+
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.08, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now + 0.05);
+      osc1.stop(now + 0.85);
+      osc2.stop(now + 0.85);
+
+      osc2.onended = () => {
+        ctx.close();
+      };
+    } catch {
+      // ignore audio errors
+    }
+  }, []);
+
+  const showRideNotification = useCallback((count: number) => {
+    const title = t('driver.notifications.new_request_title', { defaultValue: 'New ride request' });
+    const message = t('driver.notifications.new_request_body', {
+      count,
+      defaultValue: 'You have {{count}} new ride request(s).',
+    });
+    setRideNotification({ title, message });
+    if (notificationTimerRef.current) {
+      window.clearTimeout(notificationTimerRef.current);
+    }
+    notificationTimerRef.current = window.setTimeout(() => {
+      setRideNotification(null);
+    }, 7000);
+
+    playNotificationSound();
+
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body: message });
+    }
+  }, [playNotificationSound, t]);
+
+  const pushDriverLocationCoords = useCallback(async (
+    rideId: string,
+    lat: number,
+    lng: number,
+    speedKmh: number | null,
+    heading: number | null
+  ) => {
+    setDriverLocation((prev) => ({
+      lat,
+      lng,
+      city: prev?.city || 'Unknown',
+      countryCode: prev?.countryCode,
+    }));
+    setMapCenter([lat, lng]);
+
+    await supabase
+      .from('rides')
+      .update({
+        driver_lat: lat,
+        driver_lng: lng,
+        driver_updated_at: new Date().toISOString(),
+        driver_speed_kmh: speedKmh,
+        driver_heading: heading,
+      })
+      .eq('id', rideId)
+      .eq('driver_id', profile?.id);
+  }, [profile?.id]);
+
+  const pushDriverLocation = useCallback(async (rideId: string, position: GeolocationPosition) => {
+    const lat = position.coords.latitude;
+    const lng = position.coords.longitude;
+    const speedKmh = position.coords.speed !== null && position.coords.speed !== undefined
+      ? position.coords.speed * 3.6
+      : null;
+    const heading = position.coords.heading !== null && position.coords.heading !== undefined
+      ? position.coords.heading
+      : null;
+
+    await pushDriverLocationCoords(rideId, lat, lng, speedKmh, heading);
+  }, [pushDriverLocationCoords]);
+
+  const applyIpFallback = useCallback(async (rideId?: string) => {
+    const info = await detectLocationFromIp();
+    if (!info) return false;
+
+    let { city, countryCode, lat, lng } = info;
+    if ((!city || city === 'Unknown') && typeof lat === 'number' && typeof lng === 'number') {
+      const reverse = await reverseGeocodeCity(lat, lng);
+      city = reverse.city;
+      if (!countryCode) countryCode = reverse.countryCode;
+    }
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      setMapCenter([lat, lng]);
+    }
+
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      setDriverLocation({
+        lat,
+        lng,
+        city: city && city !== 'Unknown' ? city : 'Unknown',
+        countryCode,
+      });
+      const targetRideId = rideId || activeRide?.id;
+      if (targetRideId) {
+        await pushDriverLocationCoords(targetRideId, lat, lng, null, null);
+      }
+    }
+
+    if (countryCode) {
+      setLanguageByCountry(countryCode);
+    }
+
+    setGpsMessage(city ? t('driver.gps.detected_city', { city }) : t('driver.gps.detected'));
+    return true;
+  }, [activeRide?.id, pushDriverLocationCoords, t]);
+
+  const requestGeolocation = useCallback(async (fromUser: boolean = false) => {
+    if (!isSecureContextAvailable()) {
+      const httpsUrl = window.location.href.startsWith('http://')
+        ? window.location.href.replace('http://', 'https://')
+        : window.location.href;
+      setGpsStatus('denied');
+      setGpsMessage(t('driver.gps.https_required', { url: httpsUrl }));
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setGpsStatus('unsupported');
+      setGpsMessage(t('driver.gps.not_supported'));
+      await applyIpFallback();
+      return;
+    }
+
+    if (!fromUser && 'permissions' in navigator && navigator.permissions?.query) {
+      try {
+        const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        if (status.state === 'denied') {
+          setGpsStatus('denied');
+          setGpsMessage(
+            t('driver.gps.blocked')
+          );
+          await applyIpFallback();
+          return;
+        }
+      } catch (error) {
+        console.warn('Permissions API unavailable:', error);
+      }
+    }
+
+    setGpsStatus('loading');
+    setGpsMessage(t('driver.gps.requesting'));
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const { city, countryCode } = await reverseGeocodeCity(latitude, longitude);
+
+        setDriverLocation({ lat: latitude, lng: longitude, city, countryCode });
+        setMapCenter([latitude, longitude]);
+        if (countryCode) {
+          setLanguageByCountry(countryCode);
+        }
+        setGpsStatus('ready');
+        setGpsMessage(city ? t('driver.gps.detected_city', { city }) : t('driver.gps.detected'));
+      },
+      async (err) => {
+        console.error('Geolocation error:', err);
+        setGpsStatus('denied');
+        setGpsMessage(
+          t('driver.gps.denied')
+        );
+        await applyIpFallback();
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [applyIpFallback, t]);
+
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {
+        // ignore permission errors
+      });
+    }
+  }, []);
+
+  // Load initial data once auth session is ready
+  useEffect(() => {
+    let authSub: { data: { subscription: { unsubscribe: () => void } } } | null = null;
+    let cancelled = false;
+
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.user) {
+        initializeDashboard();
+        return;
+      }
+      authSub = supabase.auth.onAuthStateChange((_event, nextSession) => {
+        if (nextSession?.user) {
+          initializeDashboard();
+          authSub?.data.subscription.unsubscribe();
+        }
+      });
+    };
+
+    init();
+
+    return () => {
+      cancelled = true;
+      authSub?.data.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Subscribe to ride updates
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const subscription = supabase
+      .channel('available-rides')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'rides'
+      }, () => {
+        loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [profile?.id, driverLocation?.city, driverLocation?.lat, driverLocation?.lng]);
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const subscription = supabase
+      .channel(`driver-active-${profile.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'rides',
+        filter: `driver_id=eq.${profile.id}`,
+      }, async () => {
+        const active = await loadActiveRide(profile.id);
+        if (!active && driverLocation?.city) {
+          loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [profile?.id, driverLocation?.city, driverLocation?.lat, driverLocation?.lng]);
+
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
+  }, [driverLocation?.city, driverLocation?.lat, driverLocation?.lng, profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    if (activeRide) return;
+
+    const interval = setInterval(() => {
+      loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [driverLocation?.city, driverLocation?.lat, driverLocation?.lng, profile?.id, activeRide]);
+
+  useEffect(() => {
+    if (!profile?.id || !activeRide) return;
+
+    const interval = setInterval(() => {
+      loadActiveRide(profile.id);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [profile?.id, activeRide?.id]);
+
+  const initializeDashboard = useCallback(async () => {
+    setLoading(true);
+    try {
+      const userProfile = await getUserProfile();
+      if (!userProfile) {
+        setError(t('driver.errors.load_profile'));
+        return;
+      }
+      setProfile(userProfile);
+      setError('');
+
+      // Load settings
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('app_settings')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (settingsError) {
+        console.error('Failed to load settings:', settingsError);
+      }
+      setSettings(settingsData);
+
+      // Load subscription status
+      const { data: subData } = await supabase
+        .from('driver_subscriptions')
+        .select('*')
+        .eq('driver_id', userProfile.id)
+        .single();
+      setSubscription(subData);
+
+      // Check if driver has active ride
+      const active = await loadActiveRide(userProfile.id);
+      if (!active) {
+        // Get driver location and load available rides
+        requestGeolocation(false);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [requestGeolocation, t]);
+
+  const getCurrentLocation = () => {
+    requestGeolocation(true);
+  };
+
+  const loadActiveRide = async (driverId: string) => {
+    const { data: activeRideData, error } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('driver_id', driverId)
+      .in('status', ['driver_assigned', 'driver_arrived', 'in_progress'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to load active ride:', error);
+    }
+
+    if (activeRideData) {
+      setActiveRide(activeRideData);
+      return activeRideData;
+    }
+
+    setActiveRide(null);
+    return null;
+  };
+
+  const loadAvailableRides = async (
+    lat?: number,
+    lng?: number,
+    city?: string,
+    fallback: boolean = false
+  ) => {
+    const searchCity = city || driverLocation?.city;
+
+    try {
+      let query = supabase
+        .from('rides')
+        .select('*')
+        .eq('status', 'pending')
+        .is('driver_id', null)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (!fallback && searchCity && searchCity !== 'Unknown') {
+        const escaped = searchCity.replace(/%/g, '');
+        query = query.ilike('pickup_city', `%${escaped}%`);
+      }
+
+      const { data: rides, error } = await query;
+
+      if (error) throw error;
+
+      if (!fallback && (rides?.length ?? 0) === 0 && lat && lng) {
+        await loadAvailableRides(lat, lng, searchCity, true);
+        return;
+      }
+
+      let filtered = rides || [];
+      if (fallback && lat && lng) {
+        filtered = filtered.filter((ride) => {
+          if (!ride.pickup_lat || !ride.pickup_lng) return false;
+          const distance = calculateDistance(lat, lng, ride.pickup_lat, ride.pickup_lng);
+          return distance <= 50;
+        });
+      }
+
+      setAvailableRides(filtered);
+      const nextIds = new Set(filtered.map((ride) => ride.id));
+      const prevIds = prevRideIdsRef.current;
+      const newCount = Array.from(nextIds).filter((id) => !prevIds.has(id)).length;
+      prevRideIdsRef.current = nextIds;
+      if (hasLoadedRidesRef.current && newCount > 0 && !activeRide) {
+        showRideNotification(newCount);
+      }
+      if (!hasLoadedRidesRef.current) {
+        hasLoadedRidesRef.current = true;
+      }
+    } catch (err: any) {
+      console.error('Error loading rides:', err);
+    }
+  };
+
+  const loadMessages = async (rideId: string) => {
+    const { data } = await supabase
+      .from('ride_messages')
+      .select('*')
+      .eq('ride_id', rideId)
+      .order('created_at', { ascending: true });
+
+    if (data) setChatMessages(data as RideMessage[]);
+  };
+
+  const markChatRead = (timestamp?: string) => {
+    if (!activeRide) return;
+    const latest = timestamp || (chatMessages.length > 0
+      ? chatMessages[chatMessages.length - 1].created_at
+      : new Date().toISOString());
+    const key = `ride_chat_last_read_driver_${activeRide.id}`;
+    localStorage.setItem(key, latest);
+    setLastReadAt(latest);
+    setUnreadCount(0);
+  };
+
+
+
+
+  const openChatWindow = useCallback(() => {
+    if (!activeRide) return;
+    const url = `/driver/chat/${activeRide.id}`;
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      window.location.href = url;
+    }
+  }, [activeRide]);
+
+  const sendMessage = async () => {
+    if (!activeRide || !profile?.id || !chatInput.trim()) return;
+    setChatLoading(true);
+    try {
+      const { error: insertError } = await supabase.from('ride_messages').insert({
+        ride_id: activeRide.id,
+        sender_id: profile.id,
+        sender_role: 'driver',
+        message: chatInput.trim(),
+      });
+
+      if (insertError) throw insertError;
+      setChatInput('');
+      await loadMessages(activeRide.id);
+      markChatRead(new Date().toISOString());
+    } catch (err: any) {
+      setError(err.message || t('driver.errors.send_message_failed'));
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!chatEndRef.current) return;
+    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (!activeRide) {
+      setLastReadAt(null);
+      setUnreadCount(0);
+      return;
+    }
+    const key = `ride_chat_last_read_driver_${activeRide.id}`;
+    const stored = localStorage.getItem(key);
+    setLastReadAt(stored);
+  }, [activeRide?.id]);
+
+  useEffect(() => {
+    if (!activeRide) return;
+    const lastRead = lastReadAt ? new Date(lastReadAt).getTime() : 0;
+    const count = chatMessages.filter((msg) => {
+      const createdAt = new Date(msg.created_at).getTime();
+      return msg.sender_id !== profile?.id && createdAt > lastRead;
+    }).length;
+    setUnreadCount(count);
+  }, [activeRide?.id, chatMessages, lastReadAt, profile?.id]);
+
+  useEffect(() => {
+    if (!activeRide) {
+      setClientProfile(null);
+      setChatMessages([]);
+      return;
+    }
+
+    let subscription: any;
+
+    const setup = async () => {
+      if (activeRide.client_id) {
+        const { data: clientData } = await supabase
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', activeRide.client_id)
+          .maybeSingle();
+        if (clientData) setClientProfile(clientData);
+      }
+
+      await loadMessages(activeRide.id);
+      subscription = supabase
+        .channel(`ride-messages-${activeRide.id}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ride_messages',
+          filter: `ride_id=eq.${activeRide.id}`,
+        }, () => {
+          loadMessages(activeRide.id);
+        })
+        .subscribe();
+    };
+
+    setup();
+
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
+  }, [activeRide?.id, activeRide?.client_id, profile?.id]);
+
+  useEffect(() => {
+    setShowClientPhone(false);
+  }, [activeRide?.id]);
+
+  useEffect(() => {
+    if (!activeRide || !profile?.id) return;
+    if (!navigator.geolocation || !isSecureContextAvailable()) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const now = Date.now();
+        if (now - lastLocationUpdateRef.current < 5000) return;
+        lastLocationUpdateRef.current = now;
+
+        await pushDriverLocation(activeRide.id, position);
+      },
+      async (err) => {
+        console.error('Location tracking error:', err);
+        const code = typeof err?.code === 'number' ? err.code : null;
+        if (code === 1) {
+          setGpsStatus('denied');
+          setGpsMessage(t('driver.gps.denied_short'));
+          if (!driverLocation) {
+            await applyIpFallback();
+          }
+          return;
+        }
+        if (!driverLocation) {
+          setGpsStatus('denied');
+          setGpsMessage(t('driver.gps.denied_short'));
+          await applyIpFallback();
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [activeRide?.id, applyIpFallback, driverLocation, profile?.id, pushDriverLocation, t]);
+
+  const acceptRide = async (rideId: string) => {
+    if (!profile) return;
+
+    setLoading(true);
+    try {
+      const { data: updatedRide, error } = await supabase
+        .from('rides')
+        .update({
+          driver_id: profile.id,
+          status: 'driver_assigned',
+        })
+        .eq('id', rideId)
+        .eq('status', 'pending')
+        .is('driver_id', null)
+        .select('*')
+        .maybeSingle();
+
+      if (error || !updatedRide) {
+        throw new Error(t('driver.errors.ride_already_taken'));
+      }
+
+      setActiveRide(updatedRide);
+      setAvailableRides((prev) => prev.filter((ride) => ride.id !== rideId));
+      if (navigator.geolocation && isSecureContextAvailable()) {
+        setGpsStatus('loading');
+        setGpsMessage(t('driver.gps.requesting'));
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            pushDriverLocation(rideId, position);
+            setGpsStatus('ready');
+            setGpsMessage(t('driver.gps.detected'));
+          },
+          async (err) => {
+            console.error('Location error:', err);
+            setGpsStatus('denied');
+            setGpsMessage(t('driver.gps.denied_short'));
+            await applyIpFallback(rideId);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      } else {
+        await applyIpFallback(rideId);
+      }
+    } catch (err: any) {
+      setError(err.message || t('driver.errors.accept_failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startRide = async (rideId: string) => {
+    setLoading(true);
+    try {
+      await supabase
+        .from('rides')
+        .update({ status: 'in_progress', started_at: new Date().toISOString() })
+        .eq('id', rideId);
+      
+      initializeDashboard();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const completeRide = async (rideId: string) => {
+    setLoading(true);
+    try {
+      await supabase
+        .from('rides')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', rideId);
+      
+      setActiveRide(null);
+      initializeDashboard();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Check subscription status
+  const isSubscriptionActive = () => {
+    if (!settings?.require_driver_subscription) return true;
+    if (!subscription) return false;
+    if (subscription.is_free_access) return true;
+    if (subscription.status === 'active' && new Date(subscription.expires_at) > new Date()) return true;
+    return false;
+  };
+
+  // Format relative time
+  const getRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    return date.toLocaleDateString();
+  };
+
+  if (loading && !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  // Subscription required view
+  if (!isSubscriptionActive()) {
+    return (
+      <div className="max-w-2xl mx-auto mt-12">
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <AlertCircle className="h-16 w-16 text-orange-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('driver.subscription_required.title')}</h2>
+          <p className="text-gray-600 mb-6">
+            {t('driver.subscription_required.subtitle')}
+          </p>
+          <div className="bg-blue-50 rounded-lg p-6 mb-6">
+            <p className="text-lg font-semibold text-blue-900">
+              ${settings?.driver_subscription_price || 2}/month
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              {t('driver.subscription_required.feature', { days: settings?.subscription_period_days || 30 })}
+            </p>
+          </div>
+          <button
+            onClick={() => window.location.href = '/subscription'}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
+          >
+            {t('driver.subscription_required.subscribe')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Active ride view
+  if (activeRide) {
+    const clientPhoneLink = clientProfile?.phone
+      ? clientProfile.phone.replace(/[^\d+]/g, '')
+      : '';
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">{t('driver.active.title')}</h1>
+          <Link
+            to="/driver/settings"
+            className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+          >
+            {t('driver.account_settings')}
+          </Link>
+        </div>
+
+        {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
+          <div className="px-4 py-3 rounded-lg border bg-yellow-50 border-yellow-200 text-yellow-700">
+            <div className="flex items-center justify-between gap-3">
+              <span>{gpsMessage}</span>
+              <button
+                onClick={() => requestGeolocation(true)}
+                className="px-3 py-1 rounded-lg border border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+              >
+                {t('driver.gps.enable_button')}
+              </button>
+            </div>
+            <p className="text-xs text-yellow-700 mt-2">
+              {t('driver.gps.hint')}
+            </p>
+          </div>
+        )}
+
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          {/* Map */}
+          <div style={{ height: '280px' }}>
+            <MapContainer
+              center={[activeRide.pickup_lat, activeRide.pickup_lng]}
+              zoom={14}
+              style={{ height: '100%', width: '100%' }}
+            >
+              <TileLayer
+                attribution={MAPTILER_ATTRIBUTION}
+                url={MAPTILER_TILE_URL}
+                eventHandlers={{
+                  tileerror: () => setMapError(true),
+                }}
+              />
+              <Marker position={[activeRide.pickup_lat, activeRide.pickup_lng]} icon={pickupIcon}>
+                <Popup>
+                  <div className="p-2">
+                    <p className="font-semibold">{t('driver.map.pickup_location')}</p>
+                    <p className="text-sm">{activeRide.pickup_address}</p>
+                  </div>
+                </Popup>
+              </Marker>
+              {driverLocation && (
+                <Marker position={[driverLocation.lat, driverLocation.lng]} icon={driverIcon}>
+                  <Popup>{t('driver.map.you_are_here')}</Popup>
+                </Marker>
+              )}
+            </MapContainer>
+          </div>
+
+          {/* Ride Details */}
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm text-gray-500">{t('driver.active.status')}</p>
+                <p className="text-lg font-semibold capitalize">
+                  {t(`status.${activeRide.status}`, { defaultValue: activeRide.status.replace('_', ' ') })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">{t('driver.active.earnings')}</p>
+                <p className="text-2xl font-bold text-green-600">${activeRide.final_price}</p>
+              </div>
+            </div>
+            <div className="space-y-3 mb-6">
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <MapPin className="h-4 w-4 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">{t('driver.map.pickup')}</p>
+                  <p className="font-medium">{activeRide.pickup_address}</p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <Navigation className="h-4 w-4 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">{t('driver.map.dropoff')}</p>
+                  <p className="font-medium">{activeRide.drop_address}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              {activeRide.status === 'driver_assigned' && (
+                <button
+                  onClick={() => startRide(activeRide.id)}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
+                >
+                  {t('driver.active.start_ride')}
+                </button>
+              )}
+              {activeRide.status === 'in_progress' && (
+                <button
+                  onClick={() => completeRide(activeRide.id)}
+                  className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700"
+                >
+                  {t('driver.active.complete_ride')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        {mapError && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
+            {t('driver.map.tile_error')}
+          </div>
+        )}
+
+        <div className="bg-white rounded-xl shadow-lg p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold">{t('driver.active.client')}</h2>
+              <p className="text-sm text-gray-500">
+                {clientProfile?.full_name || t('driver.active.client_default')}
+              </p>
+            </div>
+            {clientProfile?.phone && (
+              <div className="flex flex-wrap items-center gap-2">
+                {showClientPhone ? (
+                  <>
+                    <span className="text-sm text-gray-600">{clientProfile.phone}</span>
+                    <a
+                      href={`tel:${clientPhoneLink || clientProfile.phone}`}
+                      className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                    >
+                      {t('driver.active.call')}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowClientPhone(false)}
+                      className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    >
+                      {t('common.hide')}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowClientPhone(true)}
+                    className="text-xs px-3 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {t('driver.active.show_phone')}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openChatWindow}
+              className="text-xs px-3 py-1 rounded-full bg-slate-900 text-white hover:bg-slate-800 inline-flex items-center"
+            >
+              {t('driver.active.open_chat')}
+            </button>
+            {unreadCount > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white">
+                {t('driver.active.unread', { count: unreadCount })}
+              </span>
+            )}
+          </div>
+
+        </div>
+
+      </div>
+    );
+  }
+
+  // Main dashboard with available rides
+  return (
+    <div className="space-y-6">
+      {rideNotification && (
+        <div className="fixed top-4 right-4 z-50 w-80 rounded-xl border border-yellow-200 bg-white shadow-lg">
+          <div className="flex items-start justify-between gap-3 p-4">
+            <div>
+              <p className="text-sm font-bold text-slate-900">{rideNotification.title}</p>
+              <p className="text-xs text-slate-600 mt-1">{rideNotification.message}</p>
+            </div>
+            <button
+              onClick={() => setRideNotification(null)}
+              className="text-xs font-bold text-slate-400 hover:text-slate-700"
+              aria-label="Close notification"
+            >
+              X
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">{t('driver.available.title')}</h1>
+        <Link
+          to="/driver/settings"
+          className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+        >
+          {t('driver.account_settings')}
+        </Link>
+        <div className="flex items-center space-x-4">
+          {driverLocation && (
+            <span className="text-sm text-gray-600">
+              📍 {driverLocation.city}
+            </span>
+          )}
+          <button
+            onClick={() => loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city)}
+            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title={t('common.refresh')}
+          >
+            <RefreshCw className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {gpsStatus !== 'idle' && (
+        <div
+          className={`px-4 py-3 rounded-lg border ${
+            gpsStatus === 'denied' || gpsStatus === 'unsupported'
+              ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+              : 'bg-blue-50 border-blue-200 text-blue-700'
+          }`}
+        >
+          {gpsStatus === 'loading' && (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{gpsMessage}</span>
+            </div>
+          )}
+          {gpsStatus === 'ready' && <span>{gpsMessage}</span>}
+          {gpsStatus === 'denied' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span>{gpsMessage}</span>
+                <button
+                  onClick={() => requestGeolocation(true)}
+                  className="px-3 py-1 rounded-lg border border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                >
+                  {t('driver.gps.enable_button')}
+                </button>
+              </div>
+              <p className="text-xs text-yellow-700">
+                {t('driver.gps.hint')}
+              </p>
+            </div>
+          )}
+          {gpsStatus === 'unsupported' && <span>{gpsMessage}</span>}
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Map */}
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div style={{ height: '360px' }}>
+          <MapContainer
+            center={mapCenter}
+            zoom={13}
+            style={{ height: '100%', width: '100%' }}
+          >
+            <TileLayer
+              attribution={MAPTILER_ATTRIBUTION}
+              url={MAPTILER_TILE_URL}
+              eventHandlers={{
+                tileerror: () => setMapError(true),
+              }}
+            />
+            <MapCenterHandler center={mapCenter} />
+            
+            {driverLocation && (
+              <>
+                <Marker position={[driverLocation.lat, driverLocation.lng]} icon={driverIcon}>
+                  <Popup>{t('driver.map.you_are_here')}</Popup>
+                </Marker>
+                <Circle
+                  center={[driverLocation.lat, driverLocation.lng]}
+                  radius={5000}
+                  pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.1 }}
+                />
+              </>
+            )}
+            
+            {availableRides.map((ride) => (
+              <Marker key={ride.id} position={[ride.pickup_lat, ride.pickup_lng]} icon={pickupIcon}>
+                <Popup>
+                  <div className="p-2">
+                    <p className="font-semibold">${ride.final_price ?? ride.base_price}</p>
+                    <p className="text-sm">{ride.pickup_address}</p>
+                    <button
+                      onClick={() => acceptRide(ride.id)}
+                      className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      {t('driver.available.accept')}
+                    </button>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+          </div>
+        </div>
+        {mapError && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
+            {t('driver.map.tile_error')}
+          </div>
+        )}
+
+        {/* Rides List */}
+        <div className="space-y-4 max-h-96 overflow-y-auto">
+      {availableRides.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <Car className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900">{t('driver.available.none_title')}</h3>
+          <p className="text-gray-500 mt-2">
+            {driverLocation 
+              ? t('driver.available.none_with_location')
+              : t('driver.available.none_without_location')}
+          </p>
+              {!driverLocation && (
+                <button
+                  onClick={getCurrentLocation}
+                  className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg"
+                >
+                  {t('driver.gps.enable_location')}
+                </button>
+              )}
+            </div>
+          ) : (
+            availableRides.map((ride) => (
+              <div key={ride.id} className="bg-white rounded-xl shadow-lg p-4 hover:shadow-xl transition-shadow">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <p className="text-2xl font-bold text-gray-900">${ride.final_price ?? ride.base_price}</p>
+                    <p className="text-sm text-gray-500">{getRelativeTime(ride.created_at)}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
+                      {t('driver.available.passengers', { count: ride.passengers })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-start space-x-2">
+                    <MapPin className="h-4 w-4 text-green-600 mt-1 flex-shrink-0" />
+                    <p className="text-sm text-gray-700 line-clamp-2">{ride.pickup_address}</p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <Navigation className="h-4 w-4 text-red-600 mt-1 flex-shrink-0" />
+                    <p className="text-sm text-gray-700 line-clamp-2">{ride.drop_address}</p>
+                  </div>
+                  {ride.distance_km && (
+                    <div className="flex items-center space-x-2 text-sm text-gray-500">
+                      <span>📏 {ride.distance_km.toFixed(1)} km</span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => acceptRide(ride.id)}
+                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  {t('driver.available.accept')}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
