@@ -12,7 +12,9 @@ import {
   MapPin,
   Calendar,
   Search,
-  Filter
+  Filter,
+  CreditCard,
+  Save
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -46,7 +48,12 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('rides');
   const [rides, setRides] = useState<Ride[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const [freeDaysInput, setFreeDaysInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -59,6 +66,9 @@ export default function AdminDashboard() {
     try {
       const userProfile = await getUserProfile();
       setProfile(userProfile);
+
+      const { data: settingsData } = await supabase.from('app_settings').select('*').single();
+      if (settingsData) setSettings(settingsData);
 
       await Promise.all([loadRides(), loadDrivers()]);
     } catch (err) {
@@ -128,6 +138,78 @@ export default function AdminDashboard() {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const updateSettings = async () => {
+    const canEditPricing = profile?.role === 'owner' || profile?.admin_can_edit_pricing;
+    const canManageSubscriptions = profile?.role === 'owner' || profile?.admin_can_manage_subscriptions;
+
+    if (!canEditPricing && !canManageSubscriptions) {
+      setMessage(t('common.error_prefix', { message: 'You do not have permission to update settings.' }));
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updatePayload: Record<string, any> = {};
+      if (canEditPricing) {
+        updatePayload.pricing_mode = settings.pricing_mode;
+        updatePayload.fixed_price_amount = parseFloat(settings.fixed_price_amount);
+        updatePayload.price_per_km = parseFloat(settings.price_per_km);
+        updatePayload.currency = settings.currency;
+      }
+      if (canManageSubscriptions) {
+        updatePayload.require_driver_subscription = settings.require_driver_subscription;
+        updatePayload.driver_subscription_price = parseFloat(settings.driver_subscription_price);
+        updatePayload.subscription_period_days = parseInt(settings.subscription_period_days);
+        updatePayload.enable_free_driver_access = settings.enable_free_driver_access;
+        updatePayload.default_free_days = parseInt(settings.default_free_days);
+      }
+
+      const { error } = await supabase
+        .from('app_settings')
+        .update(updatePayload)
+        .eq('id', 1);
+
+      if (error) throw error;
+      setMessage(t('owner.messages.settings_saved'));
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err: any) {
+      setMessage(t('common.error_prefix', { message: err.message }));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const grantFreeAccess = async () => {
+    if (!selectedDriver || !freeDaysInput) return;
+
+    setSaving(true);
+    try {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + parseInt(freeDaysInput));
+
+      await supabase
+        .from('driver_subscriptions')
+        .upsert({
+          driver_id: selectedDriver.id,
+          status: 'free',
+          is_free_access: true,
+          free_days_granted: parseInt(freeDaysInput),
+          free_access_reason: 'Granted by admin',
+          expires_at: expiresAt.toISOString(),
+        });
+
+      setMessage(t('owner.messages.free_access_granted', { days: freeDaysInput, name: selectedDriver.full_name }));
+      setSelectedDriver(null);
+      setFreeDaysInput('');
+      loadDrivers();
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err: any) {
+      setMessage(t('common.error_prefix', { message: err.message }));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -135,6 +217,11 @@ export default function AdminDashboard() {
       </div>
     );
   }
+
+  const canEditPricing = profile?.role === 'owner' || profile?.admin_can_edit_pricing;
+  const canManageSubscriptions = profile?.role === 'owner' || profile?.admin_can_manage_subscriptions;
+  const canGrantFreeAccess = profile?.role === 'owner' || profile?.admin_can_grant_free_access;
+  const showSettingsTab = Boolean(canEditPricing || canManageSubscriptions);
 
   return (
     <div className="space-y-6">
@@ -149,11 +236,18 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {message && (
+        <div className={`px-4 py-3 rounded-lg ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+          {message}
+        </div>
+      )}
+
       {/* Navigation Tabs */}
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
         {[
           { id: 'rides', label: t('admin.tabs.rides'), icon: Car },
           { id: 'drivers', label: t('admin.tabs.drivers'), icon: Users },
+          ...(showSettingsTab ? [{ id: 'settings', label: t('owner.tabs.settings'), icon: Settings }] : []),
         ].map((tab) => (
           <button
             key={tab.id}
@@ -283,6 +377,9 @@ export default function AdminDashboard() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.drivers_table.city')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.drivers_table.joined')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.drivers_table.status')}</th>
+                  {canGrantFreeAccess && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('owner.drivers_table.actions')}</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -319,10 +416,219 @@ export default function AdminDashboard() {
                         {driver.subscription_status ? t(`subscription.status.${driver.subscription_status}`, { defaultValue: driver.subscription_status }) : t('subscription.status.inactive')}
                       </span>
                     </td>
+                    {canGrantFreeAccess && (
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => setSelectedDriver(driver)}
+                          className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                        >
+                          {t('owner.actions.grant_free')}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Tab */}
+      {activeTab === 'settings' && (
+        <div className="bg-white rounded-xl shadow-lg p-6 space-y-6">
+          <h2 className="text-lg font-bold">{t('owner.settings.title')}</h2>
+
+          {/* Pricing Settings */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <h3 className="font-semibold flex items-center">
+              <DollarSign className="h-5 w-5 mr-2" />
+              {t('owner.settings.pricing.title')}
+            </h3>
+
+            {!canEditPricing && (
+              <div className="text-sm text-orange-600">
+                {t('owner.admins.permissions.pricing', { defaultValue: 'You do not have permission to edit pricing.' })}
+              </div>
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.pricing.mode')}</label>
+                <select
+                  value={settings.pricing_mode}
+                  onChange={(e) => setSettings({ ...settings, pricing_mode: e.target.value })}
+                  disabled={!canEditPricing}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                >
+                  <option value="fixed">{t('owner.settings.pricing.fixed')}</option>
+                  <option value="distance">{t('owner.settings.pricing.per_km')}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.pricing.currency')}</label>
+                <select
+                  value={settings.currency}
+                  onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
+                  disabled={!canEditPricing}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                >
+                  <option value="USD">{t('owner.settings.pricing.currency_usd')}</option>
+                  <option value="EUR">{t('owner.settings.pricing.currency_eur')}</option>
+                  <option value="KZT">{t('owner.settings.pricing.currency_kzt')}</option>
+                </select>
+              </div>
+
+              {settings.pricing_mode === 'fixed' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.pricing.fixed_amount')}</label>
+                  <input
+                    type="number"
+                    value={settings.fixed_price_amount}
+                    onChange={(e) => setSettings({ ...settings, fixed_price_amount: e.target.value })}
+                    disabled={!canEditPricing}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.pricing.per_km_amount')}</label>
+                  <input
+                    type="number"
+                    value={settings.price_per_km}
+                    onChange={(e) => setSettings({ ...settings, price_per_km: e.target.value })}
+                    disabled={!canEditPricing}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Subscription Settings */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <h3 className="font-semibold flex items-center">
+              <CreditCard className="h-5 w-5 mr-2" />
+              {t('owner.settings.subscription.title')}
+            </h3>
+
+            {!canManageSubscriptions && (
+              <div className="text-sm text-orange-600">
+                {t('owner.admins.permissions.subscriptions', { defaultValue: 'You do not have permission to edit subscriptions.' })}
+              </div>
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="admin_require_subscription"
+                  checked={settings.require_driver_subscription}
+                  onChange={(e) => setSettings({ ...settings, require_driver_subscription: e.target.checked })}
+                  disabled={!canManageSubscriptions}
+                  className="h-4 w-4 text-blue-600 rounded"
+                />
+                <label htmlFor="admin_require_subscription" className="ml-2 text-sm font-medium text-gray-700">
+                  {t('owner.settings.subscription.require')}
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.subscription.price')}</label>
+                <input
+                  type="number"
+                  value={settings.driver_subscription_price}
+                  onChange={(e) => setSettings({ ...settings, driver_subscription_price: e.target.value })}
+                  disabled={!canManageSubscriptions}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.subscription.period_days')}</label>
+                <input
+                  type="number"
+                  value={settings.subscription_period_days}
+                  onChange={(e) => setSettings({ ...settings, subscription_period_days: e.target.value })}
+                  disabled={!canManageSubscriptions}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('owner.settings.subscription.default_free_days')}</label>
+                <input
+                  type="number"
+                  value={settings.default_free_days}
+                  onChange={(e) => setSettings({ ...settings, default_free_days: e.target.value })}
+                  disabled={!canManageSubscriptions}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={updateSettings}
+            disabled={saving}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center space-x-2"
+          >
+            {saving ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Save className="h-5 w-5" />
+            )}
+            <span>{t('owner.settings.save')}</span>
+          </button>
+        </div>
+      )}
+
+      {selectedDriver && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <CreditCard className="h-8 w-8 text-purple-600" />
+              <h3 className="text-xl font-bold">{t('owner.grant_modal.title')}</h3>
+            </div>
+
+            <p className="text-gray-600 mb-4">
+              {t('owner.grant_modal.description', { name: selectedDriver.full_name })}
+            </p>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {t('owner.grant_modal.days_label')}
+              </label>
+              <input
+                type="number"
+                value={freeDaysInput}
+                onChange={(e) => setFreeDaysInput(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-3"
+                placeholder={t('owner.grant_modal.days_placeholder')}
+                min="1"
+              />
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setSelectedDriver(null)}
+                className="flex-1 py-3 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={grantFreeAccess}
+                disabled={saving || !freeDaysInput}
+                className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                ) : (
+                  t('owner.grant_modal.grant_button')
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

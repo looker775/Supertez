@@ -6,6 +6,36 @@ const corsHeaders = {
 };
 
 const DEFAULT_API_BASE = 'https://api-m.sandbox.paypal.com';
+const FX_API_BASE = 'https://open.er-api.com/v6/latest';
+
+const PAYPAL_SUPPORTED_CURRENCIES = new Set([
+  'AUD',
+  'BRL',
+  'CAD',
+  'CZK',
+  'DKK',
+  'EUR',
+  'HKD',
+  'HUF',
+  'ILS',
+  'JPY',
+  'MYR',
+  'MXN',
+  'TWD',
+  'NZD',
+  'NOK',
+  'PHP',
+  'PLN',
+  'GBP',
+  'RUB',
+  'SGD',
+  'SEK',
+  'CHF',
+  'THB',
+  'USD',
+]);
+
+const ZERO_DECIMAL_CURRENCIES = new Set(['HUF', 'JPY', 'TWD']);
 
 async function getAccessToken(apiBase, clientId, clientSecret) {
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -27,7 +57,7 @@ async function getAccessToken(apiBase, clientId, clientSecret) {
 
 async function loadAppSettings() {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (!url || !key) return {};
 
   const response = await fetch(
@@ -44,6 +74,49 @@ async function loadAppSettings() {
   if (!response.ok) return {};
   const data = await response.json();
   return Array.isArray(data) && data.length > 0 ? data[0] : {};
+}
+
+function normalizeCurrency(code, fallback) {
+  const normalized = typeof code === 'string' ? code.trim().toUpperCase() : '';
+  if (normalized && PAYPAL_SUPPORTED_CURRENCIES.has(normalized)) return normalized;
+  const fallbackNormalized = typeof fallback === 'string' ? fallback.trim().toUpperCase() : '';
+  if (fallbackNormalized && PAYPAL_SUPPORTED_CURRENCIES.has(fallbackNormalized)) return fallbackNormalized;
+  return 'USD';
+}
+
+function roundAmount(amount, currency) {
+  if (!Number.isFinite(amount)) return amount;
+  if (ZERO_DECIMAL_CURRENCIES.has(currency)) return Math.round(amount);
+  return Math.round(amount * 100) / 100;
+}
+
+async function fetchCountryCurrency(countryCode) {
+  if (!countryCode) return undefined;
+  const response = await fetch(`https://restcountries.com/v3.1/alpha/${countryCode}?fields=currencies`);
+  if (!response.ok) return undefined;
+  const data = await response.json();
+  const entry = Array.isArray(data) ? data[0] : data;
+  const currencies = entry?.currencies;
+  if (!currencies || typeof currencies !== 'object') return undefined;
+  const codes = Object.keys(currencies);
+  return codes[0];
+}
+
+async function resolveCurrencyForCountry(countryCode, baseCurrency) {
+  const raw = await fetchCountryCurrency(countryCode);
+  const normalized = normalizeCurrency(raw, baseCurrency);
+  const isFallback = !raw || normalized !== raw.toUpperCase();
+  return { currency: normalized, raw, isFallback };
+}
+
+async function fetchExchangeRate(baseCurrency, targetCurrency) {
+  if (baseCurrency === targetCurrency) return 1;
+  const response = await fetch(`${FX_API_BASE}/${baseCurrency}`);
+  if (!response.ok) return undefined;
+  const data = await response.json();
+  if (data?.result !== 'success' || !data?.rates) return undefined;
+  const rate = data.rates[targetCurrency];
+  return typeof rate === 'number' ? rate : undefined;
 }
 
 async function createPlan(apiBase, token, productId, price, days, currency) {
@@ -122,7 +195,30 @@ exports.handler = async (event) => {
     const settings = await loadAppSettings();
     const token = await getAccessToken(apiBase, clientId, clientSecret);
 
-    let planId = payload.planId || settings.paypal_plan_id || process.env.PAYPAL_PLAN_ID;
+    const basePriceValue = Number(settings.driver_subscription_price ?? 2);
+    const basePrice = Number.isFinite(basePriceValue) ? basePriceValue : 2;
+    const daysValue = Number(settings.subscription_period_days ?? 30);
+    const days = Number.isFinite(daysValue) && daysValue > 0 ? Math.round(daysValue) : 30;
+    const currencyRaw = settings.subscription_currency || settings.currency || 'USD';
+    const baseCurrency = String(currencyRaw).toUpperCase();
+
+    const countryCode = payload.countryCode ? String(payload.countryCode).toUpperCase() : undefined;
+    const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
+    let currency = resolved.currency;
+
+    let rate = await fetchExchangeRate(baseCurrency, currency);
+    if (!rate) {
+      currency = normalizeCurrency(baseCurrency);
+      rate = await fetchExchangeRate(baseCurrency, currency);
+    }
+
+    const convertedPrice = roundAmount(basePrice * (rate || 1), currency);
+    const price = Number.isFinite(convertedPrice) ? convertedPrice : basePrice;
+
+    let planId = payload.planId || process.env.PAYPAL_PLAN_ID;
+    if (!planId && settings.paypal_plan_id && currency === normalizeCurrency(baseCurrency)) {
+      planId = settings.paypal_plan_id;
+    }
 
     if (!planId) {
       const productId = process.env.PAYPAL_PRODUCT_ID;
@@ -133,13 +229,6 @@ exports.handler = async (event) => {
           body: JSON.stringify({ error: 'Missing PAYPAL_PLAN_ID or PAYPAL_PRODUCT_ID' }),
         };
       }
-
-      const priceValue = Number(settings.driver_subscription_price ?? 2);
-      const price = Number.isFinite(priceValue) ? priceValue : 2;
-      const daysValue = Number(settings.subscription_period_days ?? 30);
-      const days = Number.isFinite(daysValue) && daysValue > 0 ? Math.round(daysValue) : 30;
-      const currencyRaw = settings.subscription_currency || settings.currency || 'USD';
-      const currency = String(currencyRaw).toUpperCase();
 
       planId = await createPlan(apiBase, token, productId, price, days, currency);
     }

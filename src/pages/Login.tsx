@@ -145,13 +145,15 @@ export default function Login() {
 
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+      <div className="app-auth-shell">
+        <div className="app-auth-card">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-              <Mail className="h-8 w-8 text-blue-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900">{t('login.reset_title')}</h2>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-teal-100 to-orange-100 rounded-full mb-4">
+            <Mail className="h-8 w-8 text-teal-700" />
+          </div>
+          <h2 className="text-3xl font-bold text-gray-900">
+            <span className="app-gradient-text">{t('login.reset_title')}</span>
+          </h2>
             <p className="text-gray-600 mt-2">{t('login.reset_subtitle')}</p>
           </div>
 
@@ -214,13 +216,15 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+    <div className="app-auth-shell">
+      <div className="app-auth-card">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-teal-500 to-orange-400 rounded-full mb-4 shadow-lg">
             <Car className="h-8 w-8 text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900">{t('login.title')}</h2>
+          <h2 className="text-3xl font-bold text-gray-900">
+            <span className="app-gradient-text">{t('login.title')}</span>
+          </h2>
           <p className="text-gray-600 mt-2">{t('login.subtitle')}</p>
         </div>
 

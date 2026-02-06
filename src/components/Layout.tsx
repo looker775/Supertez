@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { getUserProfile, signOut } from '../lib/supabase';
 import { Menu, X, LogOut, User } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +8,7 @@ export default function Layout() {
   const [profile, setProfile] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -52,27 +53,27 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="app-shell">
       {/* Navigation */}
-      <nav className="bg-white shadow-sm border-b">
+      <nav className="app-nav">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <div className="flex items-center">
               <Link to="/" className="flex items-center space-x-2">
-                <span className="text-2xl font-bold text-blue-600">Supertez</span>
+                <span className="text-2xl font-bold app-gradient-text">Supertez</span>
               </Link>
             </div>
 
             {/* Desktop Navigation */}
             {profile && (
               <>
-                <div className="hidden md:flex items-center space-x-4">
+                <div className="hidden md:flex items-center space-x-2">
                   {getNavLinks().map((link) => (
                     <Link
                       key={link.path}
                       to={link.path}
-                      className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                      className={`app-nav-link ${location.pathname === link.path ? 'is-active' : ''}`}
                     >
                       {link.label}
                     </Link>
@@ -84,7 +85,7 @@ export default function Layout() {
                   <div className="flex items-center space-x-2 text-gray-700">
                     <User className="h-5 w-5" />
                     <span className="text-sm font-medium">{profile.full_name}</span>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                    <span className="app-pill">
                       {t(`roles.${profile.role}`, { defaultValue: profile.role })}
                     </span>
                   </div>
@@ -101,7 +102,7 @@ export default function Layout() {
                 <div className="md:hidden">
                   <button
                     onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                    className="text-gray-700 hover:text-blue-600"
+                    className="text-gray-700 hover:text-teal-600"
                   >
                     {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
                   </button>
@@ -113,14 +114,18 @@ export default function Layout() {
 
         {/* Mobile menu */}
         {mobileMenuOpen && profile && (
-          <div className="md:hidden border-t bg-white">
+          <div className="md:hidden border-t bg-white/80 backdrop-blur">
             <div className="px-2 pt-2 pb-3 space-y-1">
               {getNavLinks().map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50"
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    location.pathname === link.path
+                      ? 'bg-teal-50 text-teal-700'
+                      : 'text-gray-700 hover:text-teal-700 hover:bg-teal-50'
+                  }`}
                 >
                   {link.label}
                 </Link>
@@ -129,7 +134,7 @@ export default function Layout() {
                 <div className="px-3 py-2">
                   <p className="text-sm font-medium text-gray-900">{profile.full_name}</p>
                   <p className="text-xs text-gray-500">{profile.email}</p>
-                  <span className="inline-block mt-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  <span className="inline-block mt-1 app-pill">
                     {t(`roles.${profile.role}`, { defaultValue: profile.role })}
                   </span>
                 </div>
@@ -146,8 +151,10 @@ export default function Layout() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Outlet />
+      <main className="app-content max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="animate-[fadeIn_0.6s_ease]">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

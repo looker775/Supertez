@@ -42,6 +42,19 @@ interface Driver {
   is_free_access?: boolean;
 }
 
+interface AdminUser {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  created_at: string;
+  admin_approved?: boolean;
+  admin_blocked?: boolean;
+  admin_can_edit_pricing?: boolean;
+  admin_can_manage_subscriptions?: boolean;
+  admin_can_grant_free_access?: boolean;
+}
+
 export default function OwnerDashboard() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
@@ -53,6 +66,7 @@ export default function OwnerDashboard() {
     pendingSubscriptions: 0
   });
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,6 +94,7 @@ export default function OwnerDashboard() {
 
       // Load drivers
       await loadDrivers();
+      await loadAdmins();
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -153,6 +168,38 @@ export default function OwnerDashboard() {
         })
       );
       setDrivers(driversWithSubs);
+    }
+  };
+
+  const loadAdmins = async () => {
+    const { data: adminsData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'admin')
+      .order('created_at', { ascending: false });
+
+    if (adminsData) {
+      setAdmins(adminsData as AdminUser[]);
+    }
+  };
+
+  const updateAdmin = async (adminId: string, updates: Partial<AdminUser>) => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', adminId)
+        .eq('role', 'admin');
+
+      if (error) throw error;
+      setMessage(t('owner.messages.settings_saved'));
+      loadAdmins();
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err: any) {
+      setMessage(t('common.error_prefix', { message: err.message }));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -259,6 +306,7 @@ export default function OwnerDashboard() {
         {[
           { id: 'overview', label: t('owner.tabs.overview'), icon: TrendingUp },
           { id: 'drivers', label: t('owner.tabs.drivers'), icon: Users },
+          { id: 'admins', label: t('owner.tabs.admins', { defaultValue: 'Admins' }), icon: Shield },
           { id: 'settings', label: t('owner.tabs.settings'), icon: Settings },
           { id: 'finance', label: t('owner.tabs.finance'), icon: DollarSign },
         ].map((tab) => (
@@ -385,6 +433,123 @@ export default function OwnerDashboard() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Admins Tab */}
+      {activeTab === 'admins' && (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="p-6 border-b">
+            <h2 className="text-lg font-bold">{t('owner.admins.title', { defaultValue: 'Admin Accounts' })}</h2>
+            <p className="text-sm text-gray-500">{t('owner.admins.subtitle', { defaultValue: 'Approve, block, and control admin permissions' })}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('owner.admins.table.admin', { defaultValue: 'Admin' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('owner.admins.table.status', { defaultValue: 'Status' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('owner.admins.table.permissions', { defaultValue: 'Permissions' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('owner.admins.table.actions', { defaultValue: 'Actions' })}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {admins.map((admin) => {
+                  const approved = admin.admin_approved === true;
+                  const blocked = admin.admin_blocked === true;
+                  return (
+                    <tr key={admin.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <span className="font-semibold text-blue-600">
+                              {admin.full_name?.charAt(0) || 'A'}
+                            </span>
+                          </div>
+                          <div className="ml-4">
+                            <div className="font-medium text-gray-900">{admin.full_name || admin.email}</div>
+                            <div className="text-sm text-gray-500">{admin.email}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {approved ? t('owner.admins.status.approved', { defaultValue: 'Approved' }) : t('owner.admins.status.pending', { defaultValue: 'Pending' })}
+                          </span>
+                          {blocked && (
+                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 ml-2">
+                              {t('owner.admins.status.blocked', { defaultValue: 'Blocked' })}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-2 text-sm text-gray-700">
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={admin.admin_can_edit_pricing === true}
+                              onChange={(e) => updateAdmin(admin.id, { admin_can_edit_pricing: e.target.checked })}
+                              className="h-4 w-4 text-blue-600 rounded"
+                            />
+                            <span>{t('owner.admins.permissions.pricing', { defaultValue: 'Edit pricing (fixed / per km)' })}</span>
+                          </label>
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={admin.admin_can_manage_subscriptions === true}
+                              onChange={(e) => updateAdmin(admin.id, { admin_can_manage_subscriptions: e.target.checked })}
+                              className="h-4 w-4 text-blue-600 rounded"
+                            />
+                            <span>{t('owner.admins.permissions.subscriptions', { defaultValue: 'Change subscription requirements & price' })}</span>
+                          </label>
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={admin.admin_can_grant_free_access === true}
+                              onChange={(e) => updateAdmin(admin.id, { admin_can_grant_free_access: e.target.checked })}
+                              className="h-4 w-4 text-blue-600 rounded"
+                            />
+                            <span>{t('owner.admins.permissions.free_access', { defaultValue: 'Grant free access to drivers' })}</span>
+                          </label>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          {!approved && !blocked && (
+                            <button
+                              onClick={() => updateAdmin(admin.id, { admin_approved: true })}
+                              className="text-green-600 hover:text-green-900 text-sm font-medium"
+                            >
+                              {t('owner.admins.actions.approve', { defaultValue: 'Approve' })}
+                            </button>
+                          )}
+                          {blocked ? (
+                            <button
+                              onClick={() => updateAdmin(admin.id, { admin_blocked: false })}
+                              className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                            >
+                              {t('owner.admins.actions.unblock', { defaultValue: 'Unblock' })}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => updateAdmin(admin.id, { admin_blocked: true })}
+                              className="text-red-600 hover:text-red-900 text-sm font-medium"
+                            >
+                              {t('owner.admins.actions.block', { defaultValue: 'Block' })}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

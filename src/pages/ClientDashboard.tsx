@@ -3,7 +3,11 @@ import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import { supabase } from '../lib/supabase';
 import { setLanguageByCountry } from '../i18n';
-import { detectLocationFromIp } from '../lib/geo';
+import {
+  detectLocationFromIp,
+  readLocationOverride,
+  writeLocationOverride,
+} from '../lib/geo';
 import { 
   MapPin, 
   Navigation, 
@@ -56,6 +60,7 @@ const MAPTILER_TILE_URL = MAPTILER_KEY
 const MAPTILER_ATTRIBUTION = MAPTILER_KEY
   ? '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const CLIENT_LOCATION_OVERRIDE_KEY = 'client_location_override_v1';
 const DEFAULT_SETTINGS = {
   pricing_mode: 'distance',
   fixed_price_amount: 0,
@@ -408,6 +413,8 @@ export default function ClientDashboard() {
   const [geoLoading, setGeoLoading] = useState<'pickup' | 'dropoff' | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'ready' | 'denied' | 'unsupported'>('idle');
   const [gpsMessage, setGpsMessage] = useState('');
+  const [profileCity, setProfileCity] = useState<string | null>(null);
+  const [profileCountry, setProfileCountry] = useState<string | null>(null);
   const [cityLock, setCityLock] = useState<string | null>(null);
   const [cityLockEnabled, setCityLockEnabled] = useState(false);
   const [cityCenter, setCityCenter] = useState<LatLngTuple | null>(null);
@@ -487,31 +494,89 @@ export default function ClientDashboard() {
 
   const applyIpFallback = useCallback(async () => {
     const info = await detectLocationFromIp();
-    if (!info) return false;
+    if (info) {
+      let { city, countryCode, lat, lng } = info;
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        const reverse = await reverseGeocode(lat, lng);
+        city = reverse.city || city;
+        if (!countryCode) countryCode = reverse.countryCode;
+      }
 
-    let { city, countryCode, lat, lng } = info;
-    if ((!city || city === 'Unknown') && typeof lat === 'number' && typeof lng === 'number') {
-      const reverse = await reverseGeocode(lat, lng);
-      city = reverse.city;
-      if (!countryCode) countryCode = reverse.countryCode;
-    }
-    if (typeof lat === 'number' && typeof lng === 'number') {
-      setMapCenter([lat, lng]);
-      setCityCenter([lat, lng]);
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        setMapCenter([lat, lng]);
+        setCityCenter([lat, lng]);
+      }
+
+      if (city && city !== 'Unknown') {
+        setCityLockEnabled(true);
+        setCityLock(city);
+      }
+
+      if (countryCode) {
+        setLanguageByCountry(countryCode);
+      }
+
+      setGpsMessage(city ? t('client.gps.detected_city', { city }) : t('client.gps.detected'));
+      return true;
     }
 
-    if (city && city !== 'Unknown') {
+    const stored = readLocationOverride(CLIENT_LOCATION_OVERRIDE_KEY);
+    if (!stored) return false;
+
+    if (typeof stored.lat === 'number' && typeof stored.lng === 'number') {
+      setMapCenter([stored.lat, stored.lng]);
+      setCityCenter([stored.lat, stored.lng]);
+    }
+
+    if (stored.city && stored.city !== 'Unknown') {
       setCityLockEnabled(true);
-      setCityLock(city);
+      setCityLock(stored.city);
     }
 
-    if (countryCode) {
-      setLanguageByCountry(countryCode);
+    if (stored.countryCode) {
+      setLanguageByCountry(stored.countryCode);
     }
 
-    setGpsMessage(city ? t('client.gps.detected_city', { city }) : t('client.gps.detected'));
+    setGpsMessage(stored.city ? t('client.gps.detected_city', { city: stored.city }) : t('client.gps.detected'));
     return true;
   }, [t]);
+
+  const updateProfileCity = useCallback(
+    async (city?: string, countryCode?: string) => {
+      if (!currentUserId || !city || city === 'Unknown') return;
+      const normalized = city.trim().toLowerCase();
+      if (profileCity && profileCity.trim().toLowerCase() === normalized) return;
+      try {
+        const updates: Record<string, string | null> = { city: city.trim() };
+        if (countryCode) updates.country = countryCode.toUpperCase();
+        const { error } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', currentUserId);
+        if (!error) {
+          setProfileCity(city.trim());
+          if (countryCode) setProfileCountry(countryCode.toUpperCase());
+        }
+      } catch {
+        // ignore profile update errors
+      }
+    },
+    [currentUserId, profileCity]
+  );
+
+  const handleRedetectCity = useCallback(async () => {
+    const previousStatus = gpsStatus;
+    const previousMessage = gpsMessage;
+    setGpsStatus('loading');
+    setGpsMessage(t('client.gps.requesting'));
+    const ok = await applyIpFallback();
+    if (ok) {
+      setGpsStatus('ready');
+      return;
+    }
+    setGpsStatus(previousStatus);
+    setGpsMessage(previousMessage);
+  }, [applyIpFallback, gpsMessage, gpsStatus, t]);
 
   const requestGeolocation = useCallback(async (fromUser: boolean = false) => {
     const isSecureContext =
@@ -571,6 +636,15 @@ export default function ClientDashboard() {
         if (countryCode) {
           setLanguageByCountry(countryCode);
         }
+        updateProfileCity(city, countryCode);
+        writeLocationOverride(CLIENT_LOCATION_OVERRIDE_KEY, {
+          lat,
+          lng,
+          city: city && city !== 'Unknown' ? city : undefined,
+          countryCode,
+          updatedAt: Date.now(),
+          source: 'gps',
+        });
         setGpsStatus('ready');
         setGpsMessage(city ? t('client.gps.detected_city', { city }) : t('client.gps.detected'));
       },
@@ -584,11 +658,20 @@ export default function ClientDashboard() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, [applyIpFallback, t]);
+  }, [applyIpFallback, t, updateProfileCity]);
 
   useEffect(() => {
     requestGeolocation();
   }, [requestGeolocation]);
+
+  useEffect(() => {
+    if (gpsStatus !== 'denied' && gpsStatus !== 'unsupported') return;
+    const handleFocus = () => {
+      requestGeolocation(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [gpsStatus, requestGeolocation]);
 
   useEffect(() => {
     if (!cityLockEnabled || !cityLock || !cityCenter) {
@@ -642,6 +725,26 @@ export default function ClientDashboard() {
       authSub?.data.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let cancelled = false;
+    const loadProfileCity = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('city, country, updated_at')
+        .eq('id', currentUserId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      setProfileCity(data.city || null);
+      setProfileCountry(data.country || null);
+    };
+    loadProfileCity();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
+
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -796,6 +899,15 @@ export default function ClientDashboard() {
       setPickup(location);
       setPickupQuery(location.address);
       setPickupSuggestions([]);
+      updateProfileCity(location.city, location.countryCode);
+      writeLocationOverride(CLIENT_LOCATION_OVERRIDE_KEY, {
+        lat: location.lat,
+        lng: location.lng,
+        city: location.city && location.city !== 'Unknown' ? location.city : undefined,
+        countryCode: location.countryCode,
+        updatedAt: Date.now(),
+        source: 'manual',
+      });
     } else {
       setDropoff(location);
       setDropoffQuery(location.address);
@@ -803,7 +915,7 @@ export default function ClientDashboard() {
     }
     setMapCenter([location.lat, location.lng]);
     setSelectionMode(null);
-  }, [cityLock, isCityAllowed]);
+  }, [cityLock, isCityAllowed, updateProfileCity]);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
     let mode = selectionMode;
@@ -1403,6 +1515,20 @@ export default function ClientDashboard() {
             </div>
           )}
           {gpsStatus === 'unsupported' && <span>{gpsMessage}</span>}
+          {gpsStatus !== 'loading' && (
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={handleRedetectCity}
+                className={`px-3 py-1 rounded-lg border text-xs ${
+                  gpsStatus === 'denied' || gpsStatus === 'unsupported'
+                    ? 'border-yellow-300 text-yellow-700 hover:bg-yellow-100'
+                    : 'border-blue-200 text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                {t('common.refresh')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

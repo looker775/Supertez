@@ -1,9 +1,14 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
-import { supabase, getUserProfile } from '../lib/supabase';
+import { supabase, getUserProfile, Profile } from '../lib/supabase';
 import { setLanguageByCountry } from '../i18n';
-import { detectLocationFromIp } from '../lib/geo';
+import {
+  detectLocationFromIp,
+  readLocationOverride,
+  writeLocationOverride,
+} from '../lib/geo';
+import { formatCurrency, getExchangeRate, normalizeCurrency, resolveCurrencyForCountry, roundAmount } from '../lib/currency';
 import { 
   MapPin, 
   Navigation, 
@@ -130,6 +135,7 @@ const MAPTILER_TILE_URL = MAPTILER_KEY
 const MAPTILER_ATTRIBUTION = MAPTILER_KEY
   ? '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const DRIVER_LOCATION_OVERRIDE_KEY = 'driver_location_override_v1';
 
 // Map center handler
 function MapCenterHandler({ center }: { center: LatLngTuple }) {
@@ -143,7 +149,7 @@ function MapCenterHandler({ center }: { center: LatLngTuple }) {
 export default function DriverDashboard() {
   const { t } = useTranslation();
   // State
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [subscription, setSubscription] = useState<any>(null);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [availableRides, setAvailableRides] = useState<Ride[]>([]);
@@ -163,6 +169,8 @@ export default function DriverDashboard() {
   const notificationTimerRef = useRef<number | null>(null);
   const prevRideIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedRidesRef = useRef(false);
+  const [displayCurrency, setDisplayCurrency] = useState('USD');
+  const [displayPrice, setDisplayPrice] = useState(2);
   
   // UI State
   const [loading, setLoading] = useState(true);
@@ -170,6 +178,42 @@ export default function DriverDashboard() {
   const [mapCenter, setMapCenter] = useState<LatLngTuple>([43.238949, 76.889709]);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'ready' | 'denied' | 'unsupported'>('idle');
   const [gpsMessage, setGpsMessage] = useState('');
+
+  useEffect(() => {
+    if (!settings) return;
+    let active = true;
+
+    const updatePrice = async () => {
+      const baseCurrencyRaw = settings.subscription_currency || settings.currency || 'USD';
+      const baseCurrency = typeof baseCurrencyRaw === 'string' ? baseCurrencyRaw.toUpperCase() : 'USD';
+      const basePriceValue = Number(settings.driver_subscription_price ?? 2);
+      const basePrice = Number.isFinite(basePriceValue) ? basePriceValue : 2;
+
+      setDisplayCurrency(normalizeCurrency(baseCurrency));
+      setDisplayPrice(roundAmount(basePrice, normalizeCurrency(baseCurrency)));
+
+      let countryCode = driverLocation?.countryCode;
+      if (!countryCode) {
+        const ipLocation = await detectLocationFromIp();
+        countryCode = ipLocation?.countryCode;
+      }
+      if (!countryCode) return;
+
+      const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
+      const rate = await getExchangeRate(baseCurrency, resolved.currency);
+      if (!rate) return;
+
+      const converted = roundAmount(basePrice * rate, resolved.currency);
+      if (!active) return;
+      setDisplayCurrency(resolved.currency);
+      setDisplayPrice(converted);
+    };
+
+    updatePrice();
+    return () => {
+      active = false;
+    };
+  }, [settings, driverLocation?.countryCode]);
 
   const playNotificationSound = useCallback(() => {
     try {
@@ -271,38 +315,101 @@ export default function DriverDashboard() {
 
   const applyIpFallback = useCallback(async (rideId?: string) => {
     const info = await detectLocationFromIp();
-    if (!info) return false;
-
-    let { city, countryCode, lat, lng } = info;
-    if ((!city || city === 'Unknown') && typeof lat === 'number' && typeof lng === 'number') {
+    if (info && typeof info.lat === 'number' && typeof info.lng === 'number') {
+      let { city, countryCode, lat, lng } = info;
       const reverse = await reverseGeocodeCity(lat, lng);
-      city = reverse.city;
+      city = reverse.city || city;
       if (!countryCode) countryCode = reverse.countryCode;
-    }
-    if (typeof lat === 'number' && typeof lng === 'number') {
-      setMapCenter([lat, lng]);
-    }
 
-    if (typeof lat === 'number' && typeof lng === 'number') {
+      setMapCenter([lat, lng]);
       setDriverLocation({
         lat,
         lng,
         city: city && city !== 'Unknown' ? city : 'Unknown',
         countryCode,
       });
+
       const targetRideId = rideId || activeRide?.id;
       if (targetRideId) {
         await pushDriverLocationCoords(targetRideId, lat, lng, null, null);
       }
+
+      if (countryCode) {
+        setLanguageByCountry(countryCode);
+      }
+      setGpsMessage(city ? t('driver.gps.detected_city', { city }) : t('driver.gps.detected'));
+      return true;
     }
 
-    if (countryCode) {
-      setLanguageByCountry(countryCode);
+    const stored = readLocationOverride(DRIVER_LOCATION_OVERRIDE_KEY, 6 * 60 * 60 * 1000);
+    if (!stored || typeof stored.lat !== 'number' || typeof stored.lng !== 'number') {
+      return false;
     }
 
-    setGpsMessage(city ? t('driver.gps.detected_city', { city }) : t('driver.gps.detected'));
+    setMapCenter([stored.lat, stored.lng]);
+    setDriverLocation({
+      lat: stored.lat,
+      lng: stored.lng,
+      city: stored.city && stored.city !== 'Unknown' ? stored.city : 'Unknown',
+      countryCode: stored.countryCode,
+    });
+
+    const targetRideId = rideId || activeRide?.id;
+    if (targetRideId) {
+      await pushDriverLocationCoords(targetRideId, stored.lat, stored.lng, null, null);
+    }
+
+    if (stored.countryCode) {
+      setLanguageByCountry(stored.countryCode);
+    }
+    setGpsMessage(stored.city ? t('driver.gps.detected_city', { city: stored.city }) : t('driver.gps.detected'));
     return true;
-  }, [activeRide?.id, pushDriverLocationCoords, t]);
+  }, [activeRide?.id, profile?.city, profile?.country, pushDriverLocationCoords, t]);
+
+  const updateProfileCity = useCallback(
+    async (city?: string, countryCode?: string) => {
+      if (!profile?.id || !city || city === 'Unknown') return;
+      const normalized = city.trim().toLowerCase();
+      if (profile.city && profile.city.trim().toLowerCase() === normalized) return;
+      try {
+        const updates: Record<string, string | null> = { city: city.trim() };
+        if (countryCode) updates.country = countryCode.toUpperCase();
+        const { error } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', profile.id);
+        if (!error) {
+          setProfile((prev) => (
+            prev
+              ? {
+                  ...prev,
+                  city: city.trim(),
+                  country: countryCode || prev.country,
+                  updated_at: new Date().toISOString(),
+                }
+              : prev
+          ));
+        }
+      } catch {
+        // ignore profile update errors
+      }
+    },
+    [profile?.id, profile?.city]
+  );
+
+  const handleRedetectCity = useCallback(async () => {
+    const previousStatus = gpsStatus;
+    const previousMessage = gpsMessage;
+    setGpsStatus('loading');
+    setGpsMessage(t('driver.gps.requesting'));
+    const ok = await applyIpFallback();
+    if (ok) {
+      setGpsStatus('ready');
+      return;
+    }
+    setGpsStatus(previousStatus);
+    setGpsMessage(previousMessage);
+  }, [applyIpFallback, gpsMessage, gpsStatus, t]);
 
   const requestGeolocation = useCallback(async (fromUser: boolean = false) => {
     if (!isSecureContextAvailable()) {
@@ -350,6 +457,15 @@ export default function DriverDashboard() {
         if (countryCode) {
           setLanguageByCountry(countryCode);
         }
+        updateProfileCity(city, countryCode);
+        writeLocationOverride(DRIVER_LOCATION_OVERRIDE_KEY, {
+          lat: latitude,
+          lng: longitude,
+          city: city && city !== 'Unknown' ? city : undefined,
+          countryCode,
+          updatedAt: Date.now(),
+          source: 'gps',
+        });
         setGpsStatus('ready');
         setGpsMessage(city ? t('driver.gps.detected_city', { city }) : t('driver.gps.detected'));
       },
@@ -363,7 +479,7 @@ export default function DriverDashboard() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, [applyIpFallback, t]);
+  }, [applyIpFallback, t, updateProfileCity]);
 
   useEffect(() => {
     if (!('Notification' in window)) return;
@@ -373,6 +489,15 @@ export default function DriverDashboard() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    if (gpsStatus !== 'denied' && gpsStatus !== 'unsupported') return;
+    const handleFocus = () => {
+      requestGeolocation(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [gpsStatus, requestGeolocation]);
 
   // Load initial data once auth session is ready
   useEffect(() => {
@@ -449,6 +574,13 @@ export default function DriverDashboard() {
     if (!profile?.id) return;
     loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
   }, [driverLocation?.city, driverLocation?.lat, driverLocation?.lng, profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.city) return;
+    if (gpsStatus === 'denied' || gpsStatus === 'unsupported') {
+      applyIpFallback();
+    }
+  }, [applyIpFallback, gpsStatus, profile?.city]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -886,7 +1018,7 @@ export default function DriverDashboard() {
           </p>
           <div className="bg-blue-50 rounded-lg p-6 mb-6">
             <p className="text-lg font-semibold text-blue-900">
-              ${settings?.driver_subscription_price || 2}/month
+              {formatCurrency(displayPrice, displayCurrency)} / {t('subscription.subscribe.per_month', { defaultValue: 'month' })}
             </p>
             <p className="text-sm text-blue-700 mt-1">
               {t('driver.subscription_required.feature', { days: settings?.subscription_period_days || 30 })}
@@ -1166,6 +1298,20 @@ export default function DriverDashboard() {
             </div>
           )}
           {gpsStatus === 'unsupported' && <span>{gpsMessage}</span>}
+          {gpsStatus !== 'loading' && (
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={handleRedetectCity}
+                className={`px-3 py-1 rounded-lg border text-xs ${
+                  gpsStatus === 'denied' || gpsStatus === 'unsupported'
+                    ? 'border-yellow-300 text-yellow-700 hover:bg-yellow-100'
+                    : 'border-blue-200 text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                {t('common.refresh')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

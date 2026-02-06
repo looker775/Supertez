@@ -20,6 +20,11 @@ export interface Profile {
   city?: string;
   avatar_url?: string;
   is_active: boolean;
+  admin_approved?: boolean;
+  admin_blocked?: boolean;
+  admin_can_edit_pricing?: boolean;
+  admin_can_manage_subscriptions?: boolean;
+  admin_can_grant_free_access?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -201,6 +206,11 @@ export async function getUserProfile(): Promise<Profile | null> {
     city: undefined,
     avatar_url: undefined,
     is_active: true,
+    admin_approved: fallbackRole !== 'admin',
+    admin_blocked: false,
+    admin_can_edit_pricing: false,
+    admin_can_manage_subscriptions: false,
+    admin_can_grant_free_access: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as Profile;

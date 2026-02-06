@@ -77,14 +77,18 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
+    <div className="app-auth-shell">
+      <div className="app-auth-card space-y-8">
         {/* Header */}
         <div className="text-center">
           <div className="flex justify-center">
-            <Car className="h-12 w-12 text-blue-600" />
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-orange-400 text-white shadow-lg">
+              <Car className="h-7 w-7" />
+            </div>
           </div>
-          <h2 className="mt-4 text-3xl font-bold text-gray-900">{t('register.title')}</h2>
+          <h2 className="mt-4 text-3xl font-bold text-gray-900">
+            <span className="app-gradient-text">{t('register.title')}</span>
+          </h2>
           <p className="mt-2 text-sm text-gray-600">
             {t('register.subtitle')}
           </p>

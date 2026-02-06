@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { PayPalButtons, usePayPalScriptReducer } from '@paypal/react-paypal-js';
+import { DISPATCH_ACTION, SCRIPT_LOADING_STATE, PayPalButtons, usePayPalScriptReducer } from '@paypal/react-paypal-js';
 import { supabase, getUserProfile } from '../lib/supabase';
+import { detectCountryCode } from '../lib/geo';
+import { formatCurrency, getExchangeRate, normalizeCurrency, resolveCurrencyForCountry, roundAmount } from '../lib/currency';
 import { 
   CreditCard, 
   CheckCircle, 
@@ -29,7 +31,7 @@ export default function SubscriptionPage() {
   const [{
     isPending,
     isRejected,
-  }] = usePayPalScriptReducer();
+  }, paypalDispatch] = usePayPalScriptReducer();
   const paypalClientId = import.meta.env.VITE_PAYPAL_CLIENT_ID;
   const paypalConfigured = Boolean(
     paypalClientId &&
@@ -40,11 +42,24 @@ export default function SubscriptionPage() {
   const paypalEnv = typeof paypalEnvRaw === 'string'
     ? paypalEnvRaw.trim().toLowerCase()
     : undefined;
+  const paypalEnvironment: 'sandbox' | 'production' | undefined =
+    paypalEnv === 'sandbox' || paypalEnv === 'production'
+      ? paypalEnv
+      : undefined;
   const paypalSdkBase =
     import.meta.env.VITE_PAYPAL_SDK_BASE ||
     (paypalEnv === 'sandbox'
       ? 'https://www.sandbox.paypal.com/sdk/js'
       : 'https://www.paypal.com/sdk/js');
+  const paypalBaseOptions = {
+    clientId: paypalClientId || 'test',
+    intent: 'subscription',
+    vault: true,
+    components: 'buttons,funding-eligibility',
+    enableFunding: 'card',
+    ...(paypalEnvironment ? { environment: paypalEnvironment } : {}),
+    ...(paypalSdkBase ? { sdkBaseUrl: paypalSdkBase } : {}),
+  };
   const [profile, setProfile] = useState<any>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [settings, setSettings] = useState<any>(null);
@@ -52,9 +67,28 @@ export default function SubscriptionPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [paypalDebug, setPaypalDebug] = useState('');
+  const [countryCode, setCountryCode] = useState<string | undefined>();
+  const [displayCurrency, setDisplayCurrency] = useState<string>('USD');
+  const [displayPrice, setDisplayPrice] = useState<number>(2);
+  const [currencyNote, setCurrencyNote] = useState<string>('');
+  const [currencyLoading, setCurrencyLoading] = useState(false);
+  const emailReceiptsEnabled = import.meta.env.VITE_ENABLE_EMAIL_RECEIPTS === 'true';
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadCountry = async () => {
+      const code = await detectCountryCode();
+      if (!active) return;
+      setCountryCode(code);
+    };
+    loadCountry();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const loadData = async () => {
@@ -94,6 +128,70 @@ export default function SubscriptionPage() {
     }
   };
 
+  useEffect(() => {
+    if (!settings) return;
+
+    const baseCurrencyRaw = settings.subscription_currency || settings.currency || 'USD';
+    const baseCurrency = typeof baseCurrencyRaw === 'string' ? baseCurrencyRaw.toUpperCase() : 'USD';
+    const basePriceValue = Number(settings.driver_subscription_price ?? 2);
+    const basePrice = Number.isFinite(basePriceValue) ? basePriceValue : 2;
+
+    setDisplayCurrency(normalizeCurrency(baseCurrency));
+    setDisplayPrice(roundAmount(basePrice, normalizeCurrency(baseCurrency)));
+    setCurrencyNote('');
+
+    if (!countryCode) return;
+
+    const loadCurrency = async () => {
+      setCurrencyLoading(true);
+      try {
+        const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
+        const resolvedCurrency = resolved.currency;
+        const rate = await getExchangeRate(baseCurrency, resolvedCurrency);
+        if (!rate) {
+          setCurrencyNote(t('subscription.currency.note', {
+            defaultValue: 'Showing base currency because exchange rates are unavailable.',
+          }));
+          setDisplayCurrency(normalizeCurrency(baseCurrency));
+          setDisplayPrice(roundAmount(basePrice, normalizeCurrency(baseCurrency)));
+          return;
+        }
+
+        const converted = roundAmount(basePrice * rate, resolvedCurrency);
+        setDisplayCurrency(resolvedCurrency);
+        setDisplayPrice(converted);
+
+        if (resolved.isFallback) {
+          setCurrencyNote(t('subscription.currency.unsupported', {
+            defaultValue: 'PayPal does not support your local currency. Showing USD instead.',
+          }));
+        }
+      } catch {
+        setCurrencyNote(t('subscription.currency.note', {
+          defaultValue: 'Showing base currency because exchange rates are unavailable.',
+        }));
+        setDisplayCurrency(normalizeCurrency(baseCurrency));
+        setDisplayPrice(roundAmount(basePrice, normalizeCurrency(baseCurrency)));
+      } finally {
+        setCurrencyLoading(false);
+      }
+    };
+
+    loadCurrency();
+  }, [settings, countryCode, t]);
+
+  useEffect(() => {
+    if (!paypalConfigured || !displayCurrency) return;
+    paypalDispatch({
+      type: DISPATCH_ACTION.RESET_OPTIONS,
+      value: {
+        ...paypalBaseOptions,
+        currency: displayCurrency,
+      },
+    });
+    paypalDispatch({ type: DISPATCH_ACTION.LOADING_STATUS, value: SCRIPT_LOADING_STATE.PENDING });
+  }, [paypalConfigured, displayCurrency, paypalDispatch, paypalClientId, paypalSdkBase, paypalEnvironment]);
+
   const isSubscriptionActive = () => {
     if (!subscription) return false;
     if (subscription.is_free_access) return true;
@@ -129,12 +227,52 @@ export default function SubscriptionPage() {
     return data;
   };
 
+  const sendSubscriptionEmail = async (expiresAt: Date) => {
+    if (!emailReceiptsEnabled) return;
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) return;
+
+      const payload = {
+        type: 'subscription_activated',
+        price: settings?.driver_subscription_price || 2,
+        currency: settings?.subscription_currency || settings?.currency || 'USD',
+        days: settings?.subscription_period_days || 30,
+        expiresAt: expiresAt.toISOString(),
+      };
+
+      const response = await fetch('/.netlify/functions/send-subscription-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const message = data?.error || 'Email failed';
+        if (message !== 'Email not configured') {
+          setPaypalDebug(`email: ${message}`);
+        }
+      }
+    } catch (err: any) {
+      const message = err?.message || 'unknown error';
+      if (message !== 'Email not configured') {
+        setPaypalDebug(`email: ${message}`);
+      }
+    }
+  };
+
   const createSubscription = async () => {
     if (!profile) throw new Error(t('subscription.errors.load_profile'));
 
     const payload = {
       customId: profile.id,
       planId: settings?.paypal_plan_id || null,
+      countryCode: countryCode || null,
       returnUrl: `${window.location.origin}/subscription?paypal=success`,
       cancelUrl: `${window.location.origin}/subscription?paypal=cancel`,
     };
@@ -187,6 +325,7 @@ export default function SubscriptionPage() {
         });
 
       setSuccess(t('subscription.messages.activated'));
+      sendSubscriptionEmail(expiresAt);
       loadData();
     } catch (err: any) {
       const message = err?.message || t('subscription.errors.payment_failed');
@@ -355,7 +494,7 @@ export default function SubscriptionPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-3xl font-bold text-blue-600">
-                    ${settings?.driver_subscription_price || 2}
+                    {formatCurrency(displayPrice, displayCurrency)}
                   </p>
                   <p className="text-sm text-gray-500">{t('subscription.subscribe.per_month')}</p>
                 </div>
@@ -394,7 +533,21 @@ export default function SubscriptionPage() {
                   <div>PayPal SDK: {paypalSdkBase}</div>
                   <div>VITE_PAYPAL_ENV: {paypalEnv || 'not set'}</div>
                   <div>VITE_PAYPAL_CLIENT_ID length: {paypalClientId ? paypalClientId.length : 0}</div>
+                  <div>Detected country: {countryCode || 'unknown'}</div>
+                  <div>Charge currency: {displayCurrency}</div>
                 </div>
+
+                {currencyLoading && (
+                  <div className="mt-3 text-xs text-gray-600">
+                    {t('subscription.currency.loading', { defaultValue: 'Detecting your currency...' })}
+                  </div>
+                )}
+
+                {currencyNote && (
+                  <div className="mt-3 text-xs text-orange-600">
+                    {currencyNote}
+                  </div>
+                )}
 
                 {paypalConfigured && isPending && (
                   <div className="flex items-center justify-center py-4">

@@ -1,8 +1,8 @@
-﻿// tailwind.config.js
-module.exports = {
+// tailwind.config.js
+export default {
   content: [
     './index.html',
-    './src/**/*.{js,ts,jsx,tsx}',  // Adjust paths based on your source folder structure
+    './src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {},
