@@ -61,6 +61,7 @@ const MAPTILER_ATTRIBUTION = MAPTILER_KEY
   ? '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const CLIENT_LOCATION_OVERRIDE_KEY = 'client_location_override_v1';
+const CLIENT_LAST_RIDE_KEY = 'client_last_active_ride_v1';
 const DEFAULT_SETTINGS = {
   pricing_mode: 'distance',
   fixed_price_amount: 0,
@@ -429,6 +430,26 @@ export default function ClientDashboard() {
     return null;
   }, [cityCenter, pickup?.lat, pickup?.lng]);
 
+  const rememberActiveRideId = useCallback((rideId?: string | null) => {
+    try {
+      if (rideId) {
+        localStorage.setItem(CLIENT_LAST_RIDE_KEY, rideId);
+      } else {
+        localStorage.removeItem(CLIENT_LAST_RIDE_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  const readRememberedRideId = useCallback(() => {
+    try {
+      return localStorage.getItem(CLIENT_LAST_RIDE_KEY);
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Load settings and active ride on mount
   useEffect(() => {
     loadSettings();
@@ -446,18 +467,20 @@ export default function ClientDashboard() {
         filter: `client_id=eq.${currentUserId}`,
       }, (payload) => {
         const next = payload.new as Ride | undefined;
-        if (next && ['pending', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(next.status)) {
-          setActiveRide(next);
-        } else {
-          loadActiveRide();
-        }
-      })
+      if (next && ['pending', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(next.status)) {
+        setActiveRide(next);
+        rememberActiveRideId(next.id);
+      } else {
+        rememberActiveRideId(null);
+        loadActiveRide();
+      }
+    })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [currentUserId]);
+  }, [currentUserId, loadActiveRide, rememberActiveRideId]);
 
   useEffect(() => {
     if (!activeRide?.id) return;
@@ -826,16 +849,31 @@ export default function ClientDashboard() {
       .in('status', ['pending', 'driver_assigned', 'driver_arrived', 'in_progress'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (data) {
       setActiveRide(data);
+      rememberActiveRideId(data.id);
       // Set map to pickup location
       setMapCenter([data.pickup_lat, data.pickup_lng]);
     } else {
+      const storedId = readRememberedRideId();
+      if (storedId) {
+        const { data: storedRide } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', storedId)
+          .maybeSingle();
+        if (storedRide && ['pending', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(storedRide.status)) {
+          setActiveRide(storedRide);
+          setMapCenter([storedRide.pickup_lat, storedRide.pickup_lng]);
+          return;
+        }
+        rememberActiveRideId(null);
+      }
       setActiveRide(null);
     }
-  }, [currentUserId]);
+  }, [currentUserId, readRememberedRideId, rememberActiveRideId]);
 
   const normalizeText = useCallback((value: string) => {
     return value
@@ -1174,6 +1212,7 @@ export default function ClientDashboard() {
 
       setSuccess(t('client.notifications.request_created'));
       setActiveRide(data);
+      rememberActiveRideId(data.id);
       
       // Clear form
       setPickup(null);
@@ -1204,6 +1243,7 @@ export default function ClientDashboard() {
       .eq('id', activeRide.id);
 
     setActiveRide(null);
+    rememberActiveRideId(null);
     setLoading(false);
     setSuccess(t('client.notifications.ride_cancelled'));
   };
