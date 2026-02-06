@@ -480,7 +480,7 @@ export default function ClientDashboard() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [currentUserId, loadActiveRide, rememberActiveRideId]);
+  }, [currentUserId, rememberActiveRideId]);
 
   useEffect(() => {
     if (!activeRide?.id) return;
