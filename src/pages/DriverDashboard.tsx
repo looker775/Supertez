@@ -735,6 +735,23 @@ export default function DriverDashboard() {
     }
   };
 
+  useEffect(() => {
+    if (!profile?.id) return;
+    const refreshOnReturn = async () => {
+      if (document.hidden) return;
+      const active = await loadActiveRide(profile.id);
+      if (!active) {
+        loadAvailableRides(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
+      }
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+  }, [driverLocation?.city, driverLocation?.lat, driverLocation?.lng, loadActiveRide, profile?.id]);
+
   const loadMessages = async (rideId: string) => {
     const { data } = await supabase
       .from('ride_messages')
