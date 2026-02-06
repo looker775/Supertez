@@ -338,6 +338,7 @@ export default function ClientDashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const loadActiveRideRef = useRef<(userId?: string | null) => void>(() => {});
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [mapError, setMapError] = useState(false);
@@ -508,11 +509,11 @@ export default function ClientDashboard() {
   useEffect(() => {
     if (!currentUserId) return;
     const handleFocus = () => {
-      loadActiveRide(currentUserId);
+      loadActiveRideRef.current(currentUserId);
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        loadActiveRide(currentUserId);
+        loadActiveRideRef.current(currentUserId);
       }
     };
 
@@ -523,7 +524,7 @@ export default function ClientDashboard() {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [currentUserId, loadActiveRide]);
+  }, [currentUserId]);
 
   const applyIpFallback = useCallback(async () => {
     const info = await detectLocationFromIp();
@@ -884,6 +885,10 @@ export default function ClientDashboard() {
       setActiveRide(null);
     }
   }, [currentUserId, readRememberedRideId, rememberActiveRideId]);
+
+  useEffect(() => {
+    loadActiveRideRef.current = loadActiveRide;
+  }, [loadActiveRide]);
 
   const normalizeText = useCallback((value: string) => {
     return value
