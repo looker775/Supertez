@@ -506,14 +506,24 @@ export default function ClientDashboard() {
   }, [activeRide?.id]);
 
   useEffect(() => {
-    if (!currentUserId || !activeRide) return;
+    if (!currentUserId) return;
+    const handleFocus = () => {
+      loadActiveRide(currentUserId);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadActiveRide(currentUserId);
+      }
+    };
 
-    const interval = setInterval(() => {
-      loadActiveRide();
-    }, activeRide?.driver_id ? 3000 : 5000);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
 
-    return () => clearInterval(interval);
-  }, [currentUserId, activeRide?.id, activeRide?.driver_id]);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentUserId, loadActiveRide]);
 
   const applyIpFallback = useCallback(async () => {
     const info = await detectLocationFromIp();
