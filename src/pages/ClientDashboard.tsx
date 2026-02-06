@@ -1228,24 +1228,38 @@ export default function ClientDashboard() {
   };
 
   const cancelRide = async () => {
-    if (!activeRide) return;
+    if (!activeRide || !currentUserId) return;
     
     if (!confirm(t('client.confirm_cancel'))) return;
 
     setLoading(true);
-    await supabase
-      .from('rides')
-      .update({ 
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString(),
-        cancellation_reason: 'Cancelled by client'
-      })
-      .eq('id', activeRide.id);
+    setError('');
+    try {
+      const { data: updatedRide, error } = await supabase
+        .from('rides')
+        .update({ 
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          cancellation_reason: 'Cancelled by client'
+        })
+        .eq('id', activeRide.id)
+        .eq('client_id', currentUserId)
+        .in('status', ['pending', 'driver_assigned', 'driver_arrived', 'in_progress'])
+        .select('*')
+        .maybeSingle();
 
-    setActiveRide(null);
-    rememberActiveRideId(null);
-    setLoading(false);
-    setSuccess(t('client.notifications.ride_cancelled'));
+      if (error || !updatedRide) {
+        throw error || new Error('Failed to cancel ride');
+      }
+
+      setActiveRide(null);
+      rememberActiveRideId(null);
+      setSuccess(t('client.notifications.ride_cancelled'));
+    } catch (err: any) {
+      setError(err?.message || t('client.errors.cancel_failed', { defaultValue: 'Failed to cancel ride' }));
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Render active ride view
