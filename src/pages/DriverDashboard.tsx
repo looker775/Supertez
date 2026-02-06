@@ -15,7 +15,8 @@ import {
   Loader2,
   AlertCircle,
   Car,
-  RefreshCw
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -153,6 +154,7 @@ export default function DriverDashboard() {
   // State
   const [profile, setProfile] = useState<Profile | null>(null);
   const [subscription, setSubscription] = useState<any>(null);
+  const [verification, setVerification] = useState<any>(null);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [availableRides, setAvailableRides] = useState<Ride[]>([]);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
@@ -639,6 +641,15 @@ export default function DriverDashboard() {
         .single();
       setSubscription(subData);
 
+      const { data: verificationData } = await supabase
+        .from('driver_verifications')
+        .select('*')
+        .eq('driver_id', userProfile.id)
+        .order('submitted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setVerification(verificationData);
+
       // Check if driver has active ride
       const active = await loadActiveRide(userProfile.id);
       if (!active) {
@@ -1071,6 +1082,66 @@ export default function DriverDashboard() {
           >
             {t('driver.subscription_required.subscribe')}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (profile?.admin_blocked) {
+    return (
+      <div className="max-w-2xl mx-auto mt-12 space-y-4">
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            to="/support"
+            className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            {t('common.support')}
+          </Link>
+        </div>
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('driver.verification.blocked_title')}</h2>
+          <p className="text-gray-600 mb-6">{t('driver.verification.blocked_subtitle')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile?.admin_approved) {
+    const status = verification?.status as 'pending' | 'rejected' | undefined;
+    return (
+      <div className="max-w-2xl mx-auto mt-12 space-y-4">
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            to="/support"
+            className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            {t('common.support')}
+          </Link>
+        </div>
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <ShieldCheck className="h-16 w-16 text-emerald-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('driver.verification.required_title')}</h2>
+          <p className="text-gray-600 mb-6">
+            {status === 'pending'
+              ? t('driver.verification.pending_desc')
+              : status === 'rejected'
+                ? t('driver.verification.rejected_desc')
+                : t('driver.verification.required_desc')}
+          </p>
+          {verification?.admin_note && (
+            <div className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-lg text-sm mb-4">
+              {verification.admin_note}
+            </div>
+          )}
+          <Link
+            to="/driver/verification"
+            className="inline-flex items-center gap-2 rounded-full bg-slate-900 text-white px-6 py-3 text-sm font-semibold"
+          >
+            {status === 'pending'
+              ? t('driver.verification.view_application')
+              : t('driver.verification.start_application')}
+          </Link>
         </div>
       </div>
     );

@@ -16,7 +16,8 @@ import {
   CreditCard,
   Save,
   MessageCircle,
-  BarChart3
+  BarChart3,
+  ShieldCheck
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -77,6 +78,24 @@ interface CrmPair {
   lastPrice?: number;
 }
 
+interface DriverVerification {
+  id: string;
+  driver_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  id_document_type: 'passport' | 'id_card';
+  id_document_number?: string | null;
+  id_document_front_path: string;
+  id_document_back_path?: string | null;
+  license_number: string;
+  license_class: string;
+  license_photo_path: string;
+  plate_number: string;
+  admin_note?: string | null;
+  submitted_at?: string;
+  reviewed_at?: string | null;
+  driver?: { full_name: string; email: string; phone: string; city?: string };
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
@@ -99,6 +118,11 @@ export default function AdminDashboard() {
   const [supportStatusFilter, setSupportStatusFilter] = useState('all');
   const [supportLoading, setSupportLoading] = useState(false);
   const [crmSearch, setCrmSearch] = useState('');
+  const [verificationRequests, setVerificationRequests] = useState<DriverVerification[]>([]);
+  const [verificationStatusFilter, setVerificationStatusFilter] = useState('pending');
+  const [verificationSearch, setVerificationSearch] = useState('');
+  const [verificationNote, setVerificationNote] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
   const filteredSupportThreads = supportThreads.filter((thread) => {
     if (supportStatusFilter !== 'all' && thread.status !== supportStatusFilter) {
@@ -190,6 +214,22 @@ export default function AdminDashboard() {
     };
   }, [crmPairs]);
 
+  const filteredVerifications = useMemo(() => {
+    return verificationRequests.filter((item) => {
+      if (verificationStatusFilter !== 'all' && item.status !== verificationStatusFilter) {
+        return false;
+      }
+      if (!verificationSearch.trim()) return true;
+      const needle = verificationSearch.trim().toLowerCase();
+      const driverName = item.driver?.full_name?.toLowerCase() || '';
+      const driverEmail = item.driver?.email?.toLowerCase() || '';
+      const driverPhone = item.driver?.phone?.toLowerCase() || '';
+      const plate = item.plate_number?.toLowerCase() || '';
+      const license = item.license_number?.toLowerCase() || '';
+      return driverName.includes(needle) || driverEmail.includes(needle) || driverPhone.includes(needle) || plate.includes(needle) || license.includes(needle);
+    });
+  }, [verificationRequests, verificationSearch, verificationStatusFilter]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -233,7 +273,7 @@ export default function AdminDashboard() {
       const { data: settingsData } = await supabase.from('app_settings').select('*').single();
       if (settingsData) setSettings(settingsData);
 
-      await Promise.all([loadRides(), loadDrivers(), loadSupportThreads()]);
+      await Promise.all([loadRides(), loadDrivers(), loadSupportThreads(), loadVerifications()]);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -293,6 +333,58 @@ export default function AdminDashboard() {
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     if (data) setSupportMessages(data as SupportMessage[]);
+  };
+
+  const loadVerifications = async () => {
+    const { data } = await supabase
+      .from('driver_verifications')
+      .select('*, driver:profiles!driver_id(full_name, email, phone, city)')
+      .order('submitted_at', { ascending: false })
+      .limit(200);
+    if (data) setVerificationRequests(data as DriverVerification[]);
+  };
+
+  const openVerificationDoc = async (path?: string | null) => {
+    if (!path) return;
+    const { data, error } = await supabase
+      .storage
+      .from('driver-docs')
+      .createSignedUrl(path, 60 * 10);
+    if (error || !data?.signedUrl) return;
+    window.open(data.signedUrl, '_blank', 'noopener');
+  };
+
+  const updateVerificationStatus = async (item: DriverVerification, status: 'approved' | 'rejected') => {
+    if (!profile?.id) return;
+    setVerificationLoading(true);
+    try {
+      const adminNote = verificationNote.trim() || null;
+      await supabase
+        .from('driver_verifications')
+        .update({
+          status,
+          admin_note: adminNote,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: profile.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item.id);
+
+      await supabase
+        .from('profiles')
+        .update({
+          admin_approved: status === 'approved',
+          admin_blocked: false,
+        })
+        .eq('id', item.driver_id);
+
+      setVerificationNote('');
+      await loadVerifications();
+    } catch (err) {
+      console.error('Failed to update verification:', err);
+    } finally {
+      setVerificationLoading(false);
+    }
   };
 
   const updateSupportThreadStatus = async (threadId: string, status: 'open' | 'closed') => {
@@ -477,6 +569,7 @@ export default function AdminDashboard() {
           { id: 'rides', label: t('admin.tabs.rides'), icon: Car },
           { id: 'drivers', label: t('admin.tabs.drivers'), icon: Users },
           { id: 'crm', label: t('admin.tabs.crm', { defaultValue: 'CRM' }), icon: BarChart3 },
+          { id: 'verifications', label: t('admin.tabs.verifications', { defaultValue: 'Verifications' }), icon: ShieldCheck },
           { id: 'support', label: t('support.inbox'), icon: MessageCircle },
           ...(showSettingsTab ? [{ id: 'settings', label: t('owner.tabs.settings'), icon: Settings }] : []),
         ].map((tab) => (
@@ -745,6 +838,126 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verifications Tab */}
+      {activeTab === 'verifications' && (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="p-4 border-b space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={verificationSearch}
+                  onChange={(e) => setVerificationSearch(e.target.value)}
+                  placeholder={t('admin.verifications.search_placeholder', { defaultValue: 'Search driver, plate, license' })}
+                  className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <select
+                value={verificationStatusFilter}
+                onChange={(e) => setVerificationStatusFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg px-4 py-2 text-sm"
+              >
+                <option value="all">{t('admin.verifications.status_all', { defaultValue: 'All' })}</option>
+                <option value="pending">{t('admin.verifications.status_pending', { defaultValue: 'Pending' })}</option>
+                <option value="approved">{t('admin.verifications.status_approved', { defaultValue: 'Approved' })}</option>
+                <option value="rejected">{t('admin.verifications.status_rejected', { defaultValue: 'Rejected' })}</option>
+              </select>
+            </div>
+            <input
+              type="text"
+              value={verificationNote}
+              onChange={(e) => setVerificationNote(e.target.value)}
+              placeholder={t('admin.verifications.note_placeholder', { defaultValue: 'Optional note for approval/rejection' })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.verifications.table.driver', { defaultValue: 'Driver' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.verifications.table.docs', { defaultValue: 'Documents' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.verifications.table.vehicle', { defaultValue: 'Vehicle' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.verifications.table.status', { defaultValue: 'Status' })}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.verifications.table.actions', { defaultValue: 'Actions' })}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredVerifications.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">
+                      {t('admin.verifications.empty', { defaultValue: 'No verification requests.' })}
+                    </td>
+                  </tr>
+                )}
+                {filteredVerifications.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-gray-900">{item.driver?.full_name || t('common.unknown')}</div>
+                      <div className="text-xs text-gray-500">{item.driver?.phone || item.driver?.email || t('common.not_available')}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-xs text-gray-500">{item.id_document_type}</div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <button
+                          onClick={() => openVerificationDoc(item.id_document_front_path)}
+                          className="text-xs px-3 py-1 border rounded-lg"
+                        >
+                          {t('admin.verifications.view_id_front', { defaultValue: 'ID Front' })}
+                        </button>
+                        {item.id_document_back_path && (
+                          <button
+                            onClick={() => openVerificationDoc(item.id_document_back_path)}
+                            className="text-xs px-3 py-1 border rounded-lg"
+                          >
+                            {t('admin.verifications.view_id_back', { defaultValue: 'ID Back' })}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openVerificationDoc(item.license_photo_path)}
+                          className="text-xs px-3 py-1 border rounded-lg"
+                        >
+                          {t('admin.verifications.view_license', { defaultValue: 'License' })}
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div>{t('admin.verifications.plate', { defaultValue: 'Plate' })}: {item.plate_number}</div>
+                      <div>{t('admin.verifications.license_number', { defaultValue: 'License' })}: {item.license_number}</div>
+                      <div>{t('admin.verifications.license_class', { defaultValue: 'Class' })}: {item.license_class}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'approved' ? 'bg-green-100 text-green-700' : item.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => updateVerificationStatus(item, 'approved')}
+                          disabled={verificationLoading}
+                          className="text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white disabled:opacity-50"
+                        >
+                          {t('admin.verifications.approve', { defaultValue: 'Approve' })}
+                        </button>
+                        <button
+                          onClick={() => updateVerificationStatus(item, 'rejected')}
+                          disabled={verificationLoading}
+                          className="text-xs px-3 py-1 rounded-lg border border-red-200 text-red-700 disabled:opacity-50"
+                        >
+                          {t('admin.verifications.reject', { defaultValue: 'Reject' })}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

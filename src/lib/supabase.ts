@@ -176,6 +176,9 @@ export async function getUserProfile(): Promise<Profile | null> {
         role: fallbackRole,
         full_name: fullName,
         phone: metadataPhone ?? undefined,
+        admin_approved: fallbackRole !== 'driver',
+        admin_blocked: false,
+        is_active: true,
       },
       { onConflict: 'id' }
     );

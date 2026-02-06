@@ -13,6 +13,7 @@ import AccountSettings from './pages/AccountSettings';
 import RideChat from './pages/RideChat';
 import SupportChat from './pages/SupportChat';
 import Landing from './pages/Landing';
+import DriverVerification from './pages/DriverVerification';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { detectCountryCode } from './lib/geo';
@@ -134,6 +135,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['driver']}>
                   <AccountSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/driver/verification"
+              element={
+                <ProtectedRoute allowedRoles={['driver']}>
+                  <DriverVerification />
                 </ProtectedRoute>
               }
             />
