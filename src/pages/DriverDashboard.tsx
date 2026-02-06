@@ -1078,12 +1078,20 @@ export default function DriverDashboard() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{t('driver.active.title')}</h1>
-          <Link
-            to="/driver/settings"
-            className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
-          >
-            {t('driver.account_settings')}
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/support"
+              className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+            >
+              {t('common.support')}
+            </Link>
+            <Link
+              to="/driver/settings"
+              className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              {t('driver.account_settings')}
+            </Link>
+          </div>
         </div>
 
         {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
@@ -1277,12 +1285,20 @@ export default function DriverDashboard() {
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">{t('driver.available.title')}</h1>
-        <Link
-          to="/driver/settings"
-          className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
-        >
-          {t('driver.account_settings')}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/support"
+            className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            {t('common.support')}
+          </Link>
+          <Link
+            to="/driver/settings"
+            className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+          >
+            {t('driver.account_settings')}
+          </Link>
+        </div>
         <div className="flex items-center space-x-4">
           {driverLocation && (
             <span className="text-sm text-gray-600">

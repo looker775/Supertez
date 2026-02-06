@@ -11,6 +11,7 @@ import OwnerDashboard from './pages/OwnerDashboard';
 import Subscription from './pages/Subscription';
 import AccountSettings from './pages/AccountSettings';
 import RideChat from './pages/RideChat';
+import SupportChat from './pages/SupportChat';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { detectCountryCode } from './lib/geo';
@@ -98,6 +99,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['client']}>
                   <AccountSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/support"
+              element={
+                <ProtectedRoute allowedRoles={['client', 'driver']}>
+                  <SupportChat />
                 </ProtectedRoute>
               }
             />

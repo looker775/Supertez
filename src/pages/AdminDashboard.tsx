@@ -14,7 +14,8 @@ import {
   Search,
   Filter,
   CreditCard,
-  Save
+  Save,
+  MessageCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -42,6 +43,26 @@ interface Driver {
   subscription_status?: string;
 }
 
+interface SupportThread {
+  id: string;
+  user_id: string;
+  user_role: 'client' | 'driver';
+  status: 'open' | 'closed';
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
+  user?: { full_name: string; email: string; phone: string; role: string };
+}
+
+interface SupportMessage {
+  id: string;
+  thread_id: string;
+  sender_id: string;
+  sender_role: 'client' | 'driver' | 'admin' | 'owner';
+  message: string;
+  created_at: string;
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
@@ -56,10 +77,60 @@ export default function AdminDashboard() {
   const [freeDaysInput, setFreeDaysInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [supportThreads, setSupportThreads] = useState<SupportThread[]>([]);
+  const [selectedThread, setSelectedThread] = useState<SupportThread | null>(null);
+  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
+  const [supportInput, setSupportInput] = useState('');
+  const [supportSearch, setSupportSearch] = useState('');
+  const [supportStatusFilter, setSupportStatusFilter] = useState('all');
+  const [supportLoading, setSupportLoading] = useState(false);
+
+  const filteredSupportThreads = supportThreads.filter((thread) => {
+    if (supportStatusFilter !== 'all' && thread.status !== supportStatusFilter) {
+      return false;
+    }
+    if (!supportSearch.trim()) return true;
+    const needle = supportSearch.trim().toLowerCase();
+    const name = thread.user?.full_name?.toLowerCase() || '';
+    const email = thread.user?.email?.toLowerCase() || '';
+    const phone = thread.user?.phone?.toLowerCase() || '';
+    const role = thread.user_role?.toLowerCase() || '';
+    return name.includes(needle) || email.includes(needle) || phone.includes(needle) || role.includes(needle);
+  });
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!selectedThread?.id) {
+      setSupportMessages([]);
+      return;
+    }
+    let subscription: ReturnType<typeof supabase.channel> | null = null;
+
+    const init = async () => {
+      await loadSupportMessages(selectedThread.id);
+      subscription = supabase
+        .channel(`support-admin-${selectedThread.id}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'support_messages',
+          filter: `thread_id=eq.${selectedThread.id}`,
+        }, () => {
+          loadSupportMessages(selectedThread.id);
+          loadSupportThreads();
+        })
+        .subscribe();
+    };
+
+    init();
+
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
+  }, [selectedThread?.id]);
 
   const loadData = async () => {
     setLoading(true);
@@ -70,7 +141,7 @@ export default function AdminDashboard() {
       const { data: settingsData } = await supabase.from('app_settings').select('*').single();
       if (settingsData) setSettings(settingsData);
 
-      await Promise.all([loadRides(), loadDrivers()]);
+      await Promise.all([loadRides(), loadDrivers(), loadSupportThreads()]);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -111,6 +182,72 @@ export default function AdminDashboard() {
         })
       );
       setDrivers(driversWithSubs);
+    }
+  };
+
+  const loadSupportThreads = async () => {
+    const { data } = await supabase
+      .from('support_threads')
+      .select('*, user:profiles!user_id(full_name, email, phone, role)')
+      .order('last_message_at', { ascending: false })
+      .limit(200);
+    if (data) setSupportThreads(data as SupportThread[]);
+  };
+
+  const loadSupportMessages = async (threadId: string) => {
+    const { data } = await supabase
+      .from('support_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true });
+    if (data) setSupportMessages(data as SupportMessage[]);
+  };
+
+  const updateSupportThreadStatus = async (threadId: string, status: 'open' | 'closed') => {
+    await supabase
+      .from('support_threads')
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', threadId);
+    await loadSupportThreads();
+    if (selectedThread?.id === threadId) {
+      setSelectedThread((prev) => (prev ? { ...prev, status } : prev));
+    }
+  };
+
+  const sendSupportMessage = async () => {
+    if (!profile?.id || !selectedThread || !supportInput.trim()) return;
+    setSupportLoading(true);
+    try {
+      const message = supportInput.trim();
+      const { error: insertError } = await supabase
+        .from('support_messages')
+        .insert({
+          thread_id: selectedThread.id,
+          sender_id: profile.id,
+          sender_role: profile.role,
+          message,
+        });
+      if (insertError) throw insertError;
+
+      await supabase
+        .from('support_threads')
+        .update({
+          status: 'open',
+          last_message_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedThread.id);
+
+      setSupportInput('');
+      await loadSupportMessages(selectedThread.id);
+      await loadSupportThreads();
+    } catch (err) {
+      console.error('Failed to send support message:', err);
+    } finally {
+      setSupportLoading(false);
     }
   };
 
@@ -247,6 +384,7 @@ export default function AdminDashboard() {
         {[
           { id: 'rides', label: t('admin.tabs.rides'), icon: Car },
           { id: 'drivers', label: t('admin.tabs.drivers'), icon: Users },
+          { id: 'support', label: t('support.inbox'), icon: MessageCircle },
           ...(showSettingsTab ? [{ id: 'settings', label: t('owner.tabs.settings'), icon: Settings }] : []),
         ].map((tab) => (
           <button
@@ -430,6 +568,145 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Support Tab */}
+      {activeTab === 'support' && (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="grid lg:grid-cols-3">
+            <div className="border-r p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={supportSearch}
+                  onChange={(e) => setSupportSearch(e.target.value)}
+                  placeholder={t('support.search_placeholder')}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <select
+                value={supportStatusFilter}
+                onChange={(e) => setSupportStatusFilter(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="all">{t('support.status_all')}</option>
+                <option value="open">{t('support.status_open')}</option>
+                <option value="closed">{t('support.status_closed')}</option>
+              </select>
+
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {filteredSupportThreads.length === 0 && (
+                  <div className="text-sm text-gray-500">{t('support.no_threads')}</div>
+                )}
+                {filteredSupportThreads.map((thread) => (
+                  <button
+                    key={thread.id}
+                    onClick={() => setSelectedThread(thread)}
+                    className={`w-full text-left border rounded-lg p-3 transition ${
+                      selectedThread?.id === thread.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {thread.user?.full_name || t('support.unknown_user')}
+                      </p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        thread.status === 'open'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {thread.status === 'open' ? t('support.open') : t('support.closed')}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {thread.user?.email || thread.user?.phone || thread.user_role}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 p-4 flex flex-col">
+              {!selectedThread && (
+                <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
+                  {t('support.select_thread')}
+                </div>
+              )}
+
+              {selectedThread && (
+                <>
+                  <div className="flex items-center justify-between gap-3 border-b pb-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {selectedThread.user?.full_name || t('support.unknown_user')}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {selectedThread.user?.email || selectedThread.user?.phone || selectedThread.user_role}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedThread.status === 'open' ? (
+                        <button
+                          onClick={() => updateSupportThreadStatus(selectedThread.id, 'closed')}
+                          className="text-xs px-3 py-1 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                        >
+                          {t('support.close')}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => updateSupportThreadStatus(selectedThread.id, 'open')}
+                          className="text-xs px-3 py-1 rounded-lg border border-green-200 text-green-700 hover:bg-green-50"
+                        >
+                          {t('support.reopen')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 py-4">
+                    {supportMessages.length === 0 && (
+                      <div className="text-sm text-gray-500">{t('support.no_messages')}</div>
+                    )}
+                    {supportMessages.map((msg) => {
+                      const isAdmin = msg.sender_role === 'admin' || msg.sender_role === 'owner';
+                      return (
+                        <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                            isAdmin ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            <div className="text-[11px] opacity-70 mb-1">
+                              {isAdmin ? t('support.you') : t('support.user')}
+                            </div>
+                            <div>{msg.message}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="border-t pt-3 flex items-center gap-2">
+                    <input
+                      value={supportInput}
+                      onChange={(e) => setSupportInput(e.target.value)}
+                      placeholder={t('support.placeholder')}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <button
+                      onClick={sendSupportMessage}
+                      disabled={supportLoading || !supportInput.trim()}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
+                    >
+                      {supportLoading ? t('common.sending') : t('support.send')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

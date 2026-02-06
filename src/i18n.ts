@@ -179,6 +179,7 @@ i18n
             hide: 'Hide',
             cancel: 'Cancel',
             refresh: 'Refresh',
+            support: 'Support',
             error_prefix: 'Error: {{message}}',
             unknown: 'Unknown',
             not_available: 'N/A'
@@ -188,6 +189,35 @@ i18n
             admin: 'Admin',
             settings: 'Settings',
             subscription: 'Subscription'
+          },
+          support: {
+            title: 'Support',
+            subtitle: 'Chat with admin if you need help.',
+            back: 'Back',
+            inbox: 'Support Inbox',
+            search_placeholder: 'Search by name or email...',
+            status_all: 'All',
+            status_open: 'Open',
+            status_closed: 'Closed',
+            open: 'Open',
+            closed: 'Closed',
+            close: 'Close',
+            reopen: 'Reopen',
+            select_thread: 'Select a conversation',
+            no_threads: 'No support requests yet.',
+            no_messages: 'No messages yet.',
+            placeholder: 'Type your message...',
+            send: 'Send',
+            thread_title: 'Support chat',
+            admin: 'Admin',
+            user: 'User',
+            you: 'You',
+            unknown_user: 'Unknown user',
+            errors: {
+              load_failed: 'Failed to load support chat.',
+              send_failed: 'Failed to send message.',
+              no_access: 'Support chat is available for drivers and clients only.'
+            }
           },
           roles: {
             owner: 'Owner',
@@ -742,6 +772,7 @@ i18n
             hide: 'Скрыть',
             cancel: 'Отмена',
             refresh: 'Обновить',
+            support: 'Поддержка',
             error_prefix: 'Ошибка: {{message}}',
             unknown: 'Неизвестно',
             not_available: 'Н/Д'
@@ -751,6 +782,35 @@ i18n
             admin: 'Админ',
             settings: 'Настройки',
             subscription: 'Подписка'
+          },
+          support: {
+            title: 'Поддержка',
+            subtitle: 'Напишите администратору, если нужна помощь.',
+            back: 'Назад',
+            inbox: 'Входящие поддержки',
+            search_placeholder: 'Поиск по имени или email...',
+            status_all: 'Все',
+            status_open: 'Открыто',
+            status_closed: 'Закрыто',
+            open: 'Открыто',
+            closed: 'Закрыто',
+            close: 'Закрыть',
+            reopen: 'Открыть снова',
+            select_thread: 'Выберите диалог',
+            no_threads: 'Запросов поддержки пока нет.',
+            no_messages: 'Сообщений пока нет.',
+            placeholder: 'Введите сообщение...',
+            send: 'Отправить',
+            thread_title: 'Чат поддержки',
+            admin: 'Админ',
+            user: 'Пользователь',
+            you: 'Вы',
+            unknown_user: 'Пользователь',
+            errors: {
+              load_failed: 'Не удалось загрузить чат поддержки.',
+              send_failed: 'Не удалось отправить сообщение.',
+              no_access: 'Чат поддержки доступен только водителям и клиентам.'
+            }
           },
           roles: {
             owner: 'Владелец',

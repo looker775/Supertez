@@ -1289,12 +1289,20 @@ export default function ClientDashboard() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{t('client.active.title')}</h1>
-          <Link
-            to="/client/settings"
-            className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
-          >
-            {t('client.account_settings')}
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/support"
+              className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+            >
+              {t('common.support')}
+            </Link>
+            <Link
+              to="/client/settings"
+              className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              {t('client.account_settings')}
+            </Link>
+          </div>
         </div>
 
         {success && (
@@ -1517,12 +1525,20 @@ export default function ClientDashboard() {
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">{t('client.request.title')}</h1>
-        <Link
-          to="/client/settings"
-          className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
-        >
-          {t('client.account_settings')}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/support"
+            className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            {t('common.support')}
+          </Link>
+          <Link
+            to="/client/settings"
+            className="text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+          >
+            {t('client.account_settings')}
+          </Link>
+        </div>
       </div>
 
       {error && (
