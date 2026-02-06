@@ -1042,7 +1042,15 @@ export default function DriverDashboard() {
   // Subscription required view
   if (!isSubscriptionActive()) {
     return (
-      <div className="max-w-2xl mx-auto mt-12">
+      <div className="max-w-2xl mx-auto mt-12 space-y-4">
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            to="/support"
+            className="text-sm px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            {t('common.support')}
+          </Link>
+        </div>
         <div className="bg-white rounded-xl shadow-lg p-8 text-center">
           <AlertCircle className="h-16 w-16 text-orange-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('driver.subscription_required.title')}</h2>
