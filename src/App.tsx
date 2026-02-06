@@ -4,6 +4,7 @@ import { PayPalScriptProvider } from '@paypal/react-paypal-js';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import UpdatePassword from './pages/UpdatePassword';
+import { Auth } from './pages/Auth';
 import ClientDashboard from './pages/ClientDashboard';
 import DriverDashboard from './pages/DriverDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -74,6 +75,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/update-password" element={<UpdatePassword />} />
+          <Route path="/kali" element={<Auth />} />
+          <Route path="/kali/*" element={<Auth />} />
 
           {/* Protected routes with layout */}
           <Route path="/" element={<Layout />}>
