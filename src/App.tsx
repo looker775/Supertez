@@ -12,6 +12,7 @@ import Subscription from './pages/Subscription';
 import AccountSettings from './pages/AccountSettings';
 import RideChat from './pages/RideChat';
 import SupportChat from './pages/SupportChat';
+import Landing from './pages/Landing';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { detectCountryCode } from './lib/geo';
@@ -75,7 +76,7 @@ function App() {
 
           {/* Protected routes with layout */}
           <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/login" replace />} />
+            <Route index element={<Landing />} />
             
             {/* Client routes */}
             <Route 

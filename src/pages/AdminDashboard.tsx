@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { supabase, getUserProfile } from '../lib/supabase';
 import { 
   Shield, 
@@ -15,7 +15,8 @@ import {
   Filter,
   CreditCard,
   Save,
-  MessageCircle
+  MessageCircle,
+  BarChart3
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -63,6 +64,19 @@ interface SupportMessage {
   created_at: string;
 }
 
+interface CrmPair {
+  driverId: string;
+  clientId: string;
+  driverName: string;
+  driverPhone?: string;
+  clientName: string;
+  clientPhone?: string;
+  trips: number;
+  lastRideAt: string;
+  lastStatus: string;
+  lastPrice?: number;
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
@@ -84,6 +98,7 @@ export default function AdminDashboard() {
   const [supportSearch, setSupportSearch] = useState('');
   const [supportStatusFilter, setSupportStatusFilter] = useState('all');
   const [supportLoading, setSupportLoading] = useState(false);
+  const [crmSearch, setCrmSearch] = useState('');
 
   const filteredSupportThreads = supportThreads.filter((thread) => {
     if (supportStatusFilter !== 'all' && thread.status !== supportStatusFilter) {
@@ -97,6 +112,83 @@ export default function AdminDashboard() {
     const role = thread.user_role?.toLowerCase() || '';
     return name.includes(needle) || email.includes(needle) || phone.includes(needle) || role.includes(needle);
   });
+
+  const servedStatuses = useMemo(() => new Set(['driver_assigned', 'driver_arrived', 'in_progress', 'completed']), []);
+
+  const crmPairs = useMemo(() => {
+    const map = new Map<string, CrmPair>();
+    rides.forEach((ride) => {
+      if (!ride.driver_id || !ride.client_id) return;
+      if (!servedStatuses.has(ride.status)) return;
+
+      const key = `${ride.driver_id}-${ride.client_id}`;
+      const driverName = ride.driver?.full_name || t('common.unknown');
+      const clientName = ride.client?.full_name || t('common.unknown');
+      const driverPhone = ride.driver?.phone;
+      const clientPhone = ride.client?.phone;
+      const rideTime = ride.created_at || '';
+
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          driverId: ride.driver_id,
+          clientId: ride.client_id,
+          driverName,
+          driverPhone,
+          clientName,
+          clientPhone,
+          trips: 1,
+          lastRideAt: rideTime,
+          lastStatus: ride.status,
+          lastPrice: ride.final_price || 0,
+        });
+        return;
+      }
+
+      existing.trips += 1;
+      const existingTime = existing.lastRideAt ? new Date(existing.lastRideAt).getTime() : 0;
+      const nextTime = rideTime ? new Date(rideTime).getTime() : 0;
+      if (nextTime >= existingTime) {
+        existing.lastRideAt = rideTime;
+        existing.lastStatus = ride.status;
+        existing.lastPrice = ride.final_price || existing.lastPrice;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const aTime = a.lastRideAt ? new Date(a.lastRideAt).getTime() : 0;
+      const bTime = b.lastRideAt ? new Date(b.lastRideAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [rides, servedStatuses, t]);
+
+  const filteredCrmPairs = useMemo(() => {
+    if (!crmSearch.trim()) return crmPairs;
+    const needle = crmSearch.trim().toLowerCase();
+    return crmPairs.filter((row) => {
+      return (
+        row.driverName.toLowerCase().includes(needle) ||
+        row.clientName.toLowerCase().includes(needle) ||
+        (row.driverPhone || '').toLowerCase().includes(needle) ||
+        (row.clientPhone || '').toLowerCase().includes(needle)
+      );
+    });
+  }, [crmPairs, crmSearch]);
+
+  const crmStats = useMemo(() => {
+    const driversSet = new Set<string>();
+    const clientsSet = new Set<string>();
+    let totalTrips = 0;
+    crmPairs.forEach((row) => {
+      driversSet.add(row.driverId);
+      clientsSet.add(row.clientId);
+      totalTrips += row.trips;
+    });
+    return {
+      drivers: driversSet.size,
+      clients: clientsSet.size,
+      trips: totalTrips,
+    };
+  }, [crmPairs]);
 
   useEffect(() => {
     loadData();
@@ -384,6 +476,7 @@ export default function AdminDashboard() {
         {[
           { id: 'rides', label: t('admin.tabs.rides'), icon: Car },
           { id: 'drivers', label: t('admin.tabs.drivers'), icon: Users },
+          { id: 'crm', label: t('admin.tabs.crm', { defaultValue: 'CRM' }), icon: BarChart3 },
           { id: 'support', label: t('support.inbox'), icon: MessageCircle },
           ...(showSettingsTab ? [{ id: 'settings', label: t('owner.tabs.settings'), icon: Settings }] : []),
         ].map((tab) => (
@@ -568,6 +661,90 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* CRM Tab */}
+      {activeTab === 'crm' && (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <p className="text-xs text-slate-500">{t('admin.crm.total_trips', { defaultValue: 'Total trips served' })}</p>
+              <p className="text-2xl font-bold text-slate-900">{crmStats.trips}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <p className="text-xs text-slate-500">{t('admin.crm.unique_drivers', { defaultValue: 'Active drivers' })}</p>
+              <p className="text-2xl font-bold text-slate-900">{crmStats.drivers}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <p className="text-xs text-slate-500">{t('admin.crm.unique_clients', { defaultValue: 'Clients served' })}</p>
+              <p className="text-2xl font-bold text-slate-900">{crmStats.clients}</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={crmSearch}
+                    onChange={(e) => setCrmSearch(e.target.value)}
+                    placeholder={t('admin.crm.search_placeholder', { defaultValue: 'Search driver or client' })}
+                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.crm.table.driver', { defaultValue: 'Driver' })}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.crm.table.client', { defaultValue: 'Client' })}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.crm.table.trips', { defaultValue: 'Trips' })}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.crm.table.last_ride', { defaultValue: 'Last ride' })}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.crm.table.status', { defaultValue: 'Status' })}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.crm.table.price', { defaultValue: 'Last price' })}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredCrmPairs.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-6 text-sm text-gray-500">
+                        {t('admin.crm.empty', { defaultValue: 'No completed rides yet.' })}
+                      </td>
+                    </tr>
+                  )}
+                  {filteredCrmPairs.map((row) => (
+                    <tr key={`${row.driverId}-${row.clientId}`} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{row.driverName}</div>
+                        <div className="text-xs text-gray-500">{row.driverPhone || t('common.not_available')}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{row.clientName}</div>
+                        <div className="text-xs text-gray-500">{row.clientPhone || t('common.not_available')}</div>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.trips}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {row.lastRideAt ? new Date(row.lastRideAt).toLocaleString() : t('common.not_available')}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(row.lastStatus)}`}>
+                          {t(`status.${row.lastStatus}`, { defaultValue: row.lastStatus.replace('_', ' ') })}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {row.lastPrice ? `${settings?.currency || 'USD'} ${row.lastPrice}` : t('common.not_available')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

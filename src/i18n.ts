@@ -190,6 +190,36 @@ i18n
             settings: 'Settings',
             subscription: 'Subscription'
           },
+          landing: {
+            loading: 'Loading...',
+            badge: 'City ride network',
+            hero_title: 'Supertez moves your city with trusted drivers.',
+            hero_subtitle: 'Request a ride in seconds or earn more as a verified driver. Real-time tracking, transparent pricing, and support built in.',
+            cta_primary: 'Get started',
+            cta_secondary: 'Sign in',
+            hero_point_one: 'Transparent pricing',
+            hero_point_two: 'Verified drivers',
+            hero_point_three: 'Instant support',
+            panel_title: 'Live dispatch',
+            panel_subtitle: 'Always in control',
+            panel_badge: 'Realtime',
+            panel_item_one: 'Smart pickup locking',
+            panel_item_one_sub: 'GPS + IP fallback keeps requests local.',
+            panel_item_two: 'Driver verification',
+            panel_item_two_sub: 'Subscriptions and approvals keep quality high.',
+            panel_item_three: 'ETA & tracking',
+            panel_item_three_sub: 'Clients see driver movement in real time.',
+            panel_item_four: 'Support built in',
+            panel_item_four_sub: 'Client + driver chat with admin anytime.',
+            feature_one_title: 'Client experience',
+            feature_one_body: 'Find rides fast, share live location, and pay transparently.',
+            feature_two_title: 'Driver growth',
+            feature_two_body: 'Subscriptions, free trials, and earnings visibility in one place.',
+            feature_three_title: 'Admin control',
+            feature_three_body: 'Pricing, approvals, CRM, and support inboxes managed centrally.',
+            cta_title: 'Ready to launch your next ride?',
+            cta_subtitle: 'Join Supertez and keep riders and drivers in sync.'
+          },
           support: {
             title: 'Support',
             subtitle: 'Chat with admin if you need help.',
@@ -444,7 +474,8 @@ i18n
             subtitle: 'Manage rides and drivers',
             tabs: {
               rides: 'All Rides',
-              drivers: 'Drivers'
+              drivers: 'Drivers',
+              crm: 'CRM'
             },
             search_placeholder: 'Search rides...',
             status_all: 'All Statuses',
@@ -465,6 +496,22 @@ i18n
               city: 'City',
               joined: 'Joined',
               status: 'Status'
+            },
+            crm: {
+              title: 'CRM Overview',
+              search_placeholder: 'Search driver or client',
+              total_trips: 'Total trips served',
+              unique_drivers: 'Active drivers',
+              unique_clients: 'Clients served',
+              empty: 'No completed rides yet.',
+              table: {
+                driver: 'Driver',
+                client: 'Client',
+                trips: 'Trips',
+                last_ride: 'Last ride',
+                status: 'Status',
+                price: 'Last price'
+              }
             }
           },
           owner: {
@@ -783,6 +830,36 @@ i18n
             settings: 'Настройки',
             subscription: 'Подписка'
           },
+          landing: {
+            loading: 'Загрузка...',
+            badge: 'Городская сеть поездок',
+            hero_title: 'Supertez связывает город с проверенными водителями.',
+            hero_subtitle: 'Закажите поездку за секунды или зарабатывайте больше как проверенный водитель. Трекинг в реальном времени, прозрачные цены и поддержка.',
+            cta_primary: 'Начать',
+            cta_secondary: 'Войти',
+            hero_point_one: 'Прозрачные цены',
+            hero_point_two: 'Проверенные водители',
+            hero_point_three: 'Мгновенная поддержка',
+            panel_title: 'Живая диспетчеризация',
+            panel_subtitle: 'Полный контроль',
+            panel_badge: 'Realtime',
+            panel_item_one: 'Умная фиксация адреса',
+            panel_item_one_sub: 'GPS + IP удерживают заявки в вашем городе.',
+            panel_item_two: 'Проверка водителей',
+            panel_item_two_sub: 'Подписки и одобрения сохраняют качество сервиса.',
+            panel_item_three: 'ETA и трекинг',
+            panel_item_three_sub: 'Клиенты видят движение водителя в реальном времени.',
+            panel_item_four: 'Поддержка внутри',
+            panel_item_four_sub: 'Чат с админом для клиента и водителя.',
+            feature_one_title: 'Опыт клиента',
+            feature_one_body: 'Быстрый поиск поездок, обмен локацией и прозрачная оплата.',
+            feature_two_title: 'Рост водителей',
+            feature_two_body: 'Подписки, пробный доступ и контроль доходов в одном месте.',
+            feature_three_title: 'Контроль администратора',
+            feature_three_body: 'Цены, одобрения, CRM и поддержка — из одной панели.',
+            cta_title: 'Готовы к следующей поездке?',
+            cta_subtitle: 'Подключайтесь к Supertez и держите клиентов и водителей в синхронизации.'
+          },
           support: {
             title: 'Поддержка',
             subtitle: 'Напишите администратору, если нужна помощь.',
@@ -1037,7 +1114,8 @@ i18n
             subtitle: 'Управление поездками и водителями',
             tabs: {
               rides: 'Все поездки',
-              drivers: 'Водители'
+              drivers: 'Водители',
+              crm: 'CRM'
             },
             search_placeholder: 'Поиск поездок...',
             status_all: 'Все статусы',
@@ -1058,6 +1136,22 @@ i18n
               city: 'Город',
               joined: 'Дата регистрации',
               status: 'Статус'
+            },
+            crm: {
+              title: 'CRM обзор',
+              search_placeholder: 'Поиск водителя или клиента',
+              total_trips: 'Всего выполненных поездок',
+              unique_drivers: 'Активные водители',
+              unique_clients: 'Обслуженные клиенты',
+              empty: 'Пока нет завершённых поездок.',
+              table: {
+                driver: 'Водитель',
+                client: 'Клиент',
+                trips: 'Поездки',
+                last_ride: 'Последняя поездка',
+                status: 'Статус',
+                price: 'Последняя цена'
+              }
             }
           },
           owner: {
