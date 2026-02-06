@@ -48,6 +48,8 @@ interface DriverLocation {
   countryCode?: string;
 }
 
+const MAX_GPS_ACCURACY_METERS = 500;
+
 interface RideMessage {
   id: string;
   ride_id: string;
@@ -313,6 +315,14 @@ export default function DriverDashboard() {
     await pushDriverLocationCoords(rideId, lat, lng, speedKmh, heading);
   }, [pushDriverLocationCoords]);
 
+  const isAccuratePosition = useCallback((position: GeolocationPosition) => {
+    const accuracy = position.coords.accuracy;
+    if (typeof accuracy === 'number' && accuracy > MAX_GPS_ACCURACY_METERS) {
+      return false;
+    }
+    return true;
+  }, []);
+
   const applyIpFallback = useCallback(async (rideId?: string) => {
     const info = await detectLocationFromIp();
     if (info && typeof info.lat === 'number' && typeof info.lng === 'number') {
@@ -329,10 +339,8 @@ export default function DriverDashboard() {
         countryCode,
       });
 
-      const targetRideId = rideId || activeRide?.id;
-      if (targetRideId) {
-        await pushDriverLocationCoords(targetRideId, lat, lng, null, null);
-      }
+      // Do not push IP-based coordinates to the ride.
+      // IP location is often inaccurate and should not be used for client tracking.
 
       if (countryCode) {
         setLanguageByCountry(countryCode);
@@ -354,10 +362,7 @@ export default function DriverDashboard() {
       countryCode: stored.countryCode,
     });
 
-    const targetRideId = rideId || activeRide?.id;
-    if (targetRideId) {
-      await pushDriverLocationCoords(targetRideId, stored.lat, stored.lng, null, null);
-    }
+    // Do not push stored (non-GPS) coordinates to the ride.
 
     if (stored.countryCode) {
       setLanguageByCountry(stored.countryCode);
@@ -865,6 +870,12 @@ export default function DriverDashboard() {
         if (now - lastLocationUpdateRef.current < 5000) return;
         lastLocationUpdateRef.current = now;
 
+        if (!isAccuratePosition(position)) {
+          setGpsStatus('loading');
+          setGpsMessage(t('driver.gps.requesting'));
+          return;
+        }
+
         await pushDriverLocation(activeRide.id, position);
       },
       async (err) => {
@@ -884,13 +895,13 @@ export default function DriverDashboard() {
           await applyIpFallback();
         }
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
 
     return () => {
       navigator.geolocation.clearWatch(watchId);
     };
-  }, [activeRide?.id, applyIpFallback, driverLocation, profile?.id, pushDriverLocation, t]);
+  }, [activeRide?.id, applyIpFallback, driverLocation, isAccuratePosition, profile?.id, pushDriverLocation, t]);
 
   const acceptRide = async (rideId: string) => {
     if (!profile) return;
@@ -920,6 +931,11 @@ export default function DriverDashboard() {
         setGpsMessage(t('driver.gps.requesting'));
         navigator.geolocation.getCurrentPosition(
           (position) => {
+            if (!isAccuratePosition(position)) {
+              setGpsStatus('loading');
+              setGpsMessage(t('driver.gps.requesting'));
+              return;
+            }
             pushDriverLocation(rideId, position);
             setGpsStatus('ready');
             setGpsMessage(t('driver.gps.detected'));
@@ -930,7 +946,7 @@ export default function DriverDashboard() {
             setGpsMessage(t('driver.gps.denied_short'));
             await applyIpFallback(rideId);
           },
-          { enableHighAccuracy: true, timeout: 10000 }
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
         );
       } else {
         await applyIpFallback(rideId);
