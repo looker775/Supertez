@@ -513,7 +513,7 @@ i18n
                 status: 'Status',
                 price: 'Last price'
               }
-            }
+            },
             verifications: {
               title: 'Driver verification',
               search_placeholder: 'Search driver, plate, license',
