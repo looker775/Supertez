@@ -61,7 +61,12 @@ export default function Layout() {
             {/* Logo */}
             <div className="flex items-center">
               <Link to="/" className="flex items-center space-x-2">
-                <span className="text-2xl font-bold app-gradient-text">Supertez</span>
+                <img
+                  src="/kk.png"
+                  alt="Supertez"
+                  className="h-8 w-auto object-contain"
+                />
+                <span className="sr-only">Supertez</span>
               </Link>
             </div>
 
