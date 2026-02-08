@@ -1,11 +1,8 @@
-const IPDATA_API_KEY = process.env.IPDATA_API_KEY || process.env.IPDATA_KEY;
-
 const IP_GEO_SOURCES = [
-  IPDATA_API_KEY ? `https://api.ipdata.co/?api-key=${IPDATA_API_KEY}` : null,
   'https://ipwho.is/',
   'https://ipapi.co/json/',
   'https://geolocation-db.com/json/',
-].filter(Boolean);
+];
 
 function parseIpLocation(data) {
   if (!data || data?.success === false) return null;

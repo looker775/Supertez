@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Noto+Sans:wght@400;500;600;700&family=Noto+Serif:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @layer base {
@@ -7,7 +7,7 @@
   }
 
   body {
-    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-family: "Space Grotesk", "Noto Sans", system-ui, sans-serif;
     background:
       radial-gradient(1200px 800px at 15% -10%, rgba(15, 118, 110, 0.18), transparent 60%),
       radial-gradient(900px 700px at 95% 10%, rgba(249, 115, 22, 0.14), transparent 60%),
@@ -17,7 +17,7 @@
   }
 
   h1, h2, h3, h4, h5 {
-    font-family: "Fraunces", serif;
+    font-family: "Fraunces", "Noto Serif", serif;
     letter-spacing: -0.02em;
   }
 
