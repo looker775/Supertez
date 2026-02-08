@@ -76,9 +76,9 @@ export default function Landing() {
             </Link>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-slate-500">
-            <span>• {t('landing.hero_point_one', { defaultValue: 'Transparent pricing' })}</span>
-            <span>• {t('landing.hero_point_two', { defaultValue: 'Verified drivers' })}</span>
-            <span>• {t('landing.hero_point_three', { defaultValue: 'Instant support' })}</span>
+            <span>&bull; {t('landing.hero_point_one', { defaultValue: 'Transparent pricing' })}</span>
+            <span>&bull; {t('landing.hero_point_two', { defaultValue: 'Verified drivers' })}</span>
+            <span>&bull; {t('landing.hero_point_three', { defaultValue: 'Instant support' })}</span>
           </div>
         </div>
 
@@ -130,6 +130,35 @@ export default function Landing() {
               <p className="text-xs text-slate-500">
                 {t('landing.panel_item_four_sub', { defaultValue: 'Client + driver chat with admin anytime.' })}
               </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="app-card overflow-hidden">
+          <div className="relative">
+            <img
+              src="/landing/supertez-hero-1.png"
+              alt="Supertez futuristic shuttle"
+              className="h-64 w-full object-cover sm:h-80"
+              loading="lazy"
+            />
+            <div className="absolute inset-x-6 bottom-6 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-slate-700 backdrop-blur">
+              {t('landing.showcase_one', { defaultValue: 'Faster than bus, cheaper than taxi' })}
+            </div>
+          </div>
+        </div>
+        <div className="app-card overflow-hidden">
+          <div className="relative">
+            <img
+              src="/landing/supertez-hero-2.png"
+              alt="Supertez city shuttle with mobile app"
+              className="h-64 w-full object-cover sm:h-80"
+              loading="lazy"
+            />
+            <div className="absolute inset-x-6 bottom-6 rounded-full bg-slate-900/70 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white">
+              {t('landing.showcase_two', { defaultValue: 'Real-time routes and booking' })}
             </div>
           </div>
         </div>
