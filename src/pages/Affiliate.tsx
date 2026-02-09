@@ -42,19 +42,19 @@ export default function Affiliate() {
               to="/register?role=affiliate"
               className="inline-flex items-center gap-2 rounded-full bg-slate-900 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-slate-900/20 hover:-translate-y-0.5 transition"
             >
-              {t('affiliate.cta_join', { defaultValue: 'Join as Blogger' })}
+              {t('affiliate.cta_join', { defaultValue: 'Register as Blogger' })}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to="/login"
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300 transition"
             >
-              {t('affiliate.cta_login', { defaultValue: 'Affiliate Login' })}
+              {t('affiliate.cta_login', { defaultValue: 'Blogger Login' })}
             </Link>
           </div>
           {role === 'affiliate' && (
             <div className="text-sm text-emerald-700">
-              <Link to="/affiliate/dashboard" className="underline">
+              <Link to="/blogger/dashboard" className="underline">
                 {t('affiliate.cta_dashboard', { defaultValue: 'Go to your affiliate dashboard' })}
               </Link>
             </div>

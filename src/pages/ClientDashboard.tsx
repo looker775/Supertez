@@ -1481,12 +1481,22 @@ export default function ClientDashboard() {
           <div className="flex justify-between items-center pt-4 border-t">
             <div>
               <p className="text-sm text-gray-500">{t('client.active.price')}</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {formatCurrency(
-                  Number(activeRide.final_price || 0),
-                  (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(
+                    Number(activeRide.final_price || 0),
+                    (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                  )}
+                </p>
+                {localCurrency && localRate && (
+                  <p className="text-xs text-gray-500">
+                    ≈ {formatCurrency(
+                      roundAmount(Number(activeRide.final_price || 0) * localRate, localCurrency),
+                      localCurrency
+                    )}
+                  </p>
                 )}
-              </p>
+              </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500">{t('client.active.payment')}</p>

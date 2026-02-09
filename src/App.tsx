@@ -14,6 +14,8 @@ import AccountSettings from './pages/AccountSettings';
 import RideChat from './pages/RideChat';
 import SupportChat from './pages/SupportChat';
 import Landing from './pages/Landing';
+import Affiliate from './pages/Affiliate';
+import AffiliateDashboard from './pages/AffiliateDashboard';
 import DriverVerification from './pages/DriverVerification';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -81,6 +83,24 @@ function App() {
           {/* Protected routes with layout */}
           <Route path="/" element={<Layout />}>
             <Route index element={<Landing />} />
+            <Route path="/affiliate" element={<Navigate to="/blogger" replace />} />
+            <Route path="/blogger" element={<Affiliate />} />
+            <Route
+              path="/affiliate/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['affiliate']}>
+                  <AffiliateDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/blogger/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['affiliate']}>
+                  <AffiliateDashboard />
+                </ProtectedRoute>
+              }
+            />
             
             {/* Client routes */}
             <Route 

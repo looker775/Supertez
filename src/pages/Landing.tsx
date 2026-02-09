@@ -203,17 +203,11 @@ export default function Landing() {
         </div>
         <div className="flex flex-wrap gap-3">
           <Link
-            to="/affiliate"
+            to="/blogger"
             className="inline-flex items-center gap-2 rounded-full bg-slate-900 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-slate-900/20 hover:-translate-y-0.5 transition"
           >
             {t('landing.affiliate_cta', { defaultValue: 'Open blogger page' })}
             <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300 transition"
-          >
-            {t('landing.affiliate_login', { defaultValue: 'Affiliate login' })}
           </Link>
         </div>
       </section>

@@ -101,7 +101,7 @@ export default function Login() {
             navigate('/client');
             break;
           case 'affiliate':
-            navigate('/affiliate/dashboard');
+            navigate('/blogger/dashboard');
             break;
           default:
             navigate('/');

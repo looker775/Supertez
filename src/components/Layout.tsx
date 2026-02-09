@@ -42,6 +42,8 @@ export default function Layout() {
           { path: '/driver/settings', label: t('nav.settings') },
           { path: '/subscription', label: t('nav.subscription') },
         ];
+      case 'affiliate':
+        return [{ path: '/blogger/dashboard', label: t('nav.affiliate_dashboard', { defaultValue: 'Blogger CRM' }) }];
       case 'client':
         return [
           { path: '/client', label: t('nav.dashboard') },
@@ -51,6 +53,14 @@ export default function Layout() {
         return [];
     }
   };
+
+  const publicLinks = [
+    { path: '/blogger', label: t('nav.affiliate', { defaultValue: 'Bloggers' }) },
+    { path: '/login', label: t('login.sign_in', { defaultValue: 'Sign in' }) },
+    { path: '/register', label: t('register.title', { defaultValue: 'Register' }) },
+  ];
+
+  const navLinks = profile ? getNavLinks() : publicLinks;
 
   return (
     <div className="app-shell">
@@ -71,57 +81,59 @@ export default function Layout() {
             </div>
 
             {/* Desktop Navigation */}
+            {navLinks.length > 0 && (
+              <div className="hidden md:flex items-center space-x-2">
+                {navLinks.map((link) => (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`app-nav-link ${location.pathname === link.path ? 'is-active' : ''}`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {/* User Menu */}
             {profile && (
-              <>
-                <div className="hidden md:flex items-center space-x-2">
-                  {getNavLinks().map((link) => (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      className={`app-nav-link ${location.pathname === link.path ? 'is-active' : ''}`}
-                    >
-                      {link.label}
-                    </Link>
-                  ))}
+              <div className="hidden md:flex items-center space-x-4">
+                <div className="flex items-center space-x-2 text-gray-700">
+                  <User className="h-5 w-5" />
+                  <span className="text-sm font-medium">{profile.full_name}</span>
+                  <span className="app-pill">
+                    {t(`roles.${profile.role}`, { defaultValue: profile.role })}
+                  </span>
                 </div>
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center space-x-1 text-gray-700 hover:text-red-600 transition-colors"
+                >
+                  <LogOut className="h-5 w-5" />
+                  <span className="text-sm font-medium">{t('logout')}</span>
+                </button>
+              </div>
+            )}
 
-                {/* User Menu */}
-                <div className="hidden md:flex items-center space-x-4">
-                  <div className="flex items-center space-x-2 text-gray-700">
-                    <User className="h-5 w-5" />
-                    <span className="text-sm font-medium">{profile.full_name}</span>
-                    <span className="app-pill">
-                      {t(`roles.${profile.role}`, { defaultValue: profile.role })}
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="flex items-center space-x-1 text-gray-700 hover:text-red-600 transition-colors"
-                  >
-                    <LogOut className="h-5 w-5" />
-                    <span className="text-sm font-medium">{t('logout')}</span>
-                  </button>
-                </div>
-
-                {/* Mobile menu button */}
-                <div className="md:hidden">
-                  <button
-                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                    className="text-gray-700 hover:text-teal-600"
-                  >
-                    {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-                  </button>
-                </div>
-              </>
+            {/* Mobile menu button */}
+            {navLinks.length > 0 && (
+              <div className="md:hidden">
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="text-gray-700 hover:text-teal-600"
+                >
+                  {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                </button>
+              </div>
             )}
           </div>
         </div>
 
         {/* Mobile menu */}
-        {mobileMenuOpen && profile && (
+        {mobileMenuOpen && navLinks.length > 0 && (
           <div className="md:hidden border-t bg-white/80 backdrop-blur">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              {getNavLinks().map((link) => (
+              {navLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
@@ -135,21 +147,23 @@ export default function Layout() {
                   {link.label}
                 </Link>
               ))}
-              <div className="border-t pt-2">
-                <div className="px-3 py-2">
-                  <p className="text-sm font-medium text-gray-900">{profile.full_name}</p>
-                  <p className="text-xs text-gray-500">{profile.email}</p>
-                  <span className="inline-block mt-1 app-pill">
-                    {t(`roles.${profile.role}`, { defaultValue: profile.role })}
-                  </span>
+              {profile && (
+                <div className="border-t pt-2">
+                  <div className="px-3 py-2">
+                    <p className="text-sm font-medium text-gray-900">{profile.full_name}</p>
+                    <p className="text-xs text-gray-500">{profile.email}</p>
+                    <span className="inline-block mt-1 app-pill">
+                      {t(`roles.${profile.role}`, { defaultValue: profile.role })}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full text-left px-3 py-2 text-base font-medium text-red-600 hover:bg-red-50"
+                  >
+                    {t('logout')}
+                  </button>
                 </div>
-                <button
-                  onClick={handleSignOut}
-                  className="w-full text-left px-3 py-2 text-base font-medium text-red-600 hover:bg-red-50"
-                >
-                  {t('logout')}
-                </button>
-              </div>
+              )}
             </div>
           </div>
         )}

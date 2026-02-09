@@ -41,6 +41,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       admin: '/admin',
       driver: '/driver',
       client: '/client',
+      affiliate: '/blogger/dashboard',
     };
     return <Navigate to={roleRedirects[profile.role] || '/login'} replace />;
   }

@@ -189,8 +189,8 @@ i18n
             admin: 'Admin',
             settings: 'Settings',
             subscription: 'Subscription',
-            affiliate: 'Affiliates',
-            affiliate_dashboard: 'Affiliate CRM'
+            affiliate: 'Bloggers',
+            affiliate_dashboard: 'Blogger CRM'
           },
           landing: {
             loading: 'Loading...',
@@ -222,7 +222,7 @@ i18n
             affiliate_title: 'Blogger program',
             affiliate_subtitle: 'Get a unique driver signup link and track your referrals in a CRM dashboard.',
             affiliate_cta: 'Open blogger page',
-            affiliate_login: 'Affiliate login',
+            affiliate_login: 'Blogger login',
             cta_title: 'Ready to launch your next ride?',
             cta_subtitle: 'Join Supertez and keep riders and drivers in sync.'
           },
@@ -925,7 +925,9 @@ i18n
             dashboard: 'Панель',
             admin: 'Админ',
             settings: 'Настройки',
-            subscription: 'Подписка'
+            subscription: 'Подписка',
+            affiliate: 'Блогеры',
+            affiliate_dashboard: 'CRM блогера'
           },
           landing: {
             loading: 'Загрузка...',
