@@ -1482,14 +1482,14 @@ export default function ClientDashboard() {
             <div>
               <p className="text-sm text-gray-500">{t('client.active.price')}</p>
               <div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-lg font-semibold text-gray-700">
                   {formatCurrency(
                     Number(activeRide.final_price || 0),
                     (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
                   )}
                 </p>
                 {localCurrency && localRate && (
-                  <p className="text-base font-semibold text-slate-700">
+                  <p className="text-3xl font-bold text-slate-900">
                     ≈ {formatCurrency(
                       roundAmount(Number(activeRide.final_price || 0) * localRate, localCurrency),
                       localCurrency
@@ -1985,14 +1985,14 @@ export default function ClientDashboard() {
                 <p className="text-sm text-gray-500">{t('client.price.estimated')}</p>
                 {pickup && dropoff ? (
                   <div>
-                    <p className="text-3xl font-bold text-gray-900">
+                    <p className="text-lg font-semibold text-gray-700">
                       {formatCurrency(
                         calculatePrice(),
                         (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
                       )}
                     </p>
                     {localCurrency && localRate && (
-                      <p className="text-base font-semibold text-slate-700">
+                      <p className="text-4xl font-bold text-slate-900">
                         ≈ {formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
                       </p>
                     )}
