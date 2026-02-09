@@ -219,6 +219,10 @@ i18n
             feature_two_body: 'Subscriptions, free trials, and earnings visibility in one place.',
             feature_three_title: 'Admin control',
             feature_three_body: 'Pricing, approvals, CRM, and support inboxes managed centrally.',
+            affiliate_title: 'Blogger program',
+            affiliate_subtitle: 'Get a unique driver signup link and track your referrals in a CRM dashboard.',
+            affiliate_cta: 'Open blogger page',
+            affiliate_login: 'Affiliate login',
             cta_title: 'Ready to launch your next ride?',
             cta_subtitle: 'Join Supertez and keep riders and drivers in sync.'
           },
@@ -331,6 +335,12 @@ i18n
               cancelled: 'Cancelled',
               inactive: 'Inactive',
               none: 'No Subscription'
+            },
+            currency: {
+              loading: 'Detecting your currency...',
+              note: 'Showing base currency because exchange rates are unavailable.',
+              unsupported: 'PayPal does not support your local currency. Charging in {{currency}}.',
+              local_equivalent: '≈ {{amount}} in your local currency'
             }
           },
           login: {
@@ -944,6 +954,10 @@ i18n
             feature_two_body: 'Подписки, пробный доступ и контроль доходов в одном месте.',
             feature_three_title: 'Контроль администратора',
             feature_three_body: 'Цены, одобрения, CRM и поддержка — из одной панели.',
+            affiliate_title: 'Программа для блогеров',
+            affiliate_subtitle: 'Получите уникальную ссылку регистрации водителей и CRM-отчёты по заявкам.',
+            affiliate_cta: 'Открыть страницу блогера',
+            affiliate_login: 'Вход для блогера',
             cta_title: 'Готовы к следующей поездке?',
             cta_subtitle: 'Подключайтесь к Supertez и держите клиентов и водителей в синхронизации.'
           },
@@ -1095,6 +1109,12 @@ i18n
               cancelled: 'Отменена',
               inactive: 'Неактивна',
               none: 'Нет подписки'
+            },
+            currency: {
+              loading: 'Определяем валюту...',
+              note: 'Показана базовая валюта, так как курсы недоступны.',
+              unsupported: 'PayPal не поддерживает вашу валюту. Оплата в {{currency}}.',
+              local_equivalent: '≈ {{amount}} в вашей валюте'
             }
           },
           login: {

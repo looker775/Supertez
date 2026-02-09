@@ -5,9 +5,11 @@ import { supabase } from '../lib/supabase';
 import { setLanguageByCountry } from '../i18n';
 import {
   detectLocationFromIp,
+  detectCountryCode,
   readLocationOverride,
   writeLocationOverride,
 } from '../lib/geo';
+import { formatCurrency, getExchangeRate, resolveCurrencyForCountry, roundAmount } from '../lib/currency';
 import { 
   MapPin, 
   Navigation, 
@@ -331,6 +333,9 @@ export default function ClientDashboard() {
   // Active ride state
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [settings, setSettings] = useState<any>(null);
+  const [countryCode, setCountryCode] = useState<string | undefined>();
+  const [localCurrency, setLocalCurrency] = useState<string | null>(null);
+  const [localRate, setLocalRate] = useState<number | null>(null);
   const [driverProfile, setDriverProfile] = useState<{ full_name?: string; phone?: string } | null>(null);
   const [showDriverPhone, setShowDriverPhone] = useState(false);
   const [chatMessages, setChatMessages] = useState<RideMessage[]>([]);
@@ -455,6 +460,57 @@ export default function ClientDashboard() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadCountry = async () => {
+      const code = await detectCountryCode();
+      if (!active) return;
+      setCountryCode(code);
+    };
+    loadCountry();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!settings || !countryCode) {
+      setLocalCurrency(null);
+      setLocalRate(null);
+      return;
+    }
+
+    const baseCurrency = (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase();
+    let active = true;
+
+    const resolveLocal = async () => {
+      const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
+      const rawCurrency = resolved.raw ? resolved.raw.toUpperCase() : undefined;
+      if (!rawCurrency || rawCurrency === baseCurrency) {
+        if (active) {
+          setLocalCurrency(null);
+          setLocalRate(null);
+        }
+        return;
+      }
+
+      const rate = await getExchangeRate(baseCurrency, rawCurrency);
+      if (!active) return;
+      if (rate) {
+        setLocalCurrency(rawCurrency);
+        setLocalRate(rate);
+      } else {
+        setLocalCurrency(null);
+        setLocalRate(null);
+      }
+    };
+
+    resolveLocal();
+    return () => {
+      active = false;
+    };
+  }, [settings, countryCode]);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -1425,7 +1481,12 @@ export default function ClientDashboard() {
           <div className="flex justify-between items-center pt-4 border-t">
             <div>
               <p className="text-sm text-gray-500">{t('client.active.price')}</p>
-              <p className="text-2xl font-bold text-gray-900">${activeRide.final_price}</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {formatCurrency(
+                  Number(activeRide.final_price || 0),
+                  (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                )}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500">{t('client.active.payment')}</p>
@@ -1913,7 +1974,19 @@ export default function ClientDashboard() {
               <div>
                 <p className="text-sm text-gray-500">{t('client.price.estimated')}</p>
                 {pickup && dropoff ? (
-                  <p className="text-3xl font-bold text-gray-900">${calculatePrice()}</p>
+                  <div>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {formatCurrency(
+                        calculatePrice(),
+                        (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                      )}
+                    </p>
+                    {localCurrency && localRate && (
+                      <p className="text-xs text-gray-500">
+                        ≈ {formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-3xl font-bold text-gray-400">--</p>
                 )}

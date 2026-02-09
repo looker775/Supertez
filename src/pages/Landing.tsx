@@ -193,6 +193,34 @@ export default function Landing() {
       <section className="app-card p-8 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-3xl font-bold text-slate-900">
+            {t('landing.affiliate_title', { defaultValue: 'Blogger program' })}
+          </h2>
+          <p className="text-sm text-slate-600 mt-2">
+            {t('landing.affiliate_subtitle', {
+              defaultValue: 'Get a unique driver signup link and track your referrals in a CRM dashboard.',
+            })}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to="/affiliate"
+            className="inline-flex items-center gap-2 rounded-full bg-slate-900 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-slate-900/20 hover:-translate-y-0.5 transition"
+          >
+            {t('landing.affiliate_cta', { defaultValue: 'Open blogger page' })}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300 transition"
+          >
+            {t('landing.affiliate_login', { defaultValue: 'Affiliate login' })}
+          </Link>
+        </div>
+      </section>
+
+      <section className="app-card p-8 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900">
             {t('landing.cta_title', { defaultValue: 'Ready to launch your next ride?' })}
           </h2>
           <p className="text-sm text-slate-600 mt-2">
