@@ -96,6 +96,16 @@ interface DriverVerification {
   driver?: { full_name: string; email: string; phone: string; city?: string };
 }
 
+interface AffiliateRow {
+  id: string;
+  affiliate_id: string;
+  code: string;
+  created_at: string;
+  affiliate?: { full_name: string; email: string; phone: string };
+  driverCount: number;
+  lastDriverAt?: string | null;
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
@@ -123,6 +133,8 @@ export default function AdminDashboard() {
   const [verificationSearch, setVerificationSearch] = useState('');
   const [verificationNote, setVerificationNote] = useState('');
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [affiliates, setAffiliates] = useState<AffiliateRow[]>([]);
+  const [affiliateSearch, setAffiliateSearch] = useState('');
 
   const filteredSupportThreads = supportThreads.filter((thread) => {
     if (supportStatusFilter !== 'all' && thread.status !== supportStatusFilter) {
@@ -214,6 +226,24 @@ export default function AdminDashboard() {
     };
   }, [crmPairs]);
 
+  const filteredAffiliates = useMemo(() => {
+    if (!affiliateSearch.trim()) return affiliates;
+    const needle = affiliateSearch.trim().toLowerCase();
+    return affiliates.filter((row) => {
+      const name = row.affiliate?.full_name?.toLowerCase() || '';
+      const email = row.affiliate?.email?.toLowerCase() || '';
+      const phone = row.affiliate?.phone?.toLowerCase() || '';
+      const code = row.code?.toLowerCase() || '';
+      return name.includes(needle) || email.includes(needle) || phone.includes(needle) || code.includes(needle);
+    });
+  }, [affiliates, affiliateSearch]);
+
+  const affiliateStats = useMemo(() => {
+    const totalAffiliates = affiliates.length;
+    const totalDrivers = affiliates.reduce((sum, row) => sum + (row.driverCount || 0), 0);
+    return { totalAffiliates, totalDrivers };
+  }, [affiliates]);
+
   const filteredVerifications = useMemo(() => {
     return verificationRequests.filter((item) => {
       if (verificationStatusFilter !== 'all' && item.status !== verificationStatusFilter) {
@@ -273,7 +303,7 @@ export default function AdminDashboard() {
       const { data: settingsData } = await supabase.from('app_settings').select('*').single();
       if (settingsData) setSettings(settingsData);
 
-      await Promise.all([loadRides(), loadDrivers(), loadSupportThreads(), loadVerifications()]);
+      await Promise.all([loadRides(), loadDrivers(), loadSupportThreads(), loadVerifications(), loadAffiliates()]);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -342,6 +372,48 @@ export default function AdminDashboard() {
       .order('submitted_at', { ascending: false })
       .limit(200);
     if (data) setVerificationRequests(data as DriverVerification[]);
+  };
+
+  const loadAffiliates = async () => {
+    const { data: codes, error } = await supabase
+      .from('affiliate_codes')
+      .select('*, affiliate:profiles!affiliate_id(full_name, email, phone)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) {
+      console.error('Failed to load affiliates:', error);
+      setAffiliates([]);
+      return;
+    }
+
+    const { data: driversData } = await supabase
+      .from('profiles')
+      .select('id, affiliate_code, created_at')
+      .eq('role', 'driver')
+      .not('affiliate_code', 'is', null);
+
+    const stats = new Map<string, { count: number; lastAt?: string | null }>();
+    (driversData || []).forEach((driver: any) => {
+      const code = driver.affiliate_code;
+      if (!code) return;
+      const current = stats.get(code) || { count: 0, lastAt: null };
+      current.count += 1;
+      if (!current.lastAt || (driver.created_at && new Date(driver.created_at).getTime() > new Date(current.lastAt).getTime())) {
+        current.lastAt = driver.created_at;
+      }
+      stats.set(code, current);
+    });
+
+    const rows = (codes || []).map((row: any) => {
+      const stat = stats.get(row.code) || { count: 0, lastAt: null };
+      return {
+        ...row,
+        driverCount: stat.count,
+        lastDriverAt: stat.lastAt,
+      } as AffiliateRow;
+    });
+
+    setAffiliates(rows);
   };
 
   const openVerificationDoc = async (path?: string | null) => {
@@ -569,6 +641,7 @@ export default function AdminDashboard() {
           { id: 'rides', label: t('admin.tabs.rides'), icon: Car },
           { id: 'drivers', label: t('admin.tabs.drivers'), icon: Users },
           { id: 'crm', label: t('admin.tabs.crm', { defaultValue: 'CRM' }), icon: BarChart3 },
+          { id: 'affiliates', label: t('admin.tabs.affiliates', { defaultValue: 'Affiliates' }), icon: Users },
           { id: 'verifications', label: t('admin.tabs.verifications', { defaultValue: 'Verifications' }), icon: ShieldCheck },
           { id: 'support', label: t('support.inbox'), icon: MessageCircle },
           ...(showSettingsTab ? [{ id: 'settings', label: t('owner.tabs.settings'), icon: Settings }] : []),
@@ -832,6 +905,94 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900">
                         {row.lastPrice ? `${settings?.currency || 'USD'} ${row.lastPrice}` : t('common.not_available')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Affiliates Tab */}
+      {activeTab === 'affiliates' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-lg font-bold text-gray-900">{t('admin.affiliates.title')}</h2>
+            <p className="text-sm text-gray-600 mt-1">{t('admin.affiliates.subtitle')}</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <p className="text-xs text-slate-500">{t('admin.affiliates.total_affiliates')}</p>
+              <p className="text-2xl font-bold text-slate-900">{affiliateStats.totalAffiliates}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <p className="text-xs text-slate-500">{t('admin.affiliates.total_drivers')}</p>
+              <p className="text-2xl font-bold text-slate-900">{affiliateStats.totalDrivers}</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={affiliateSearch}
+                    onChange={(e) => setAffiliateSearch(e.target.value)}
+                    placeholder={t('admin.affiliates.search_placeholder')}
+                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {t('admin.affiliates.table.affiliate')}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {t('admin.affiliates.table.code')}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {t('admin.affiliates.table.drivers')}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {t('admin.affiliates.table.last_signup')}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {t('admin.affiliates.table.contact')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredAffiliates.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">
+                        {t('admin.affiliates.empty')}
+                      </td>
+                    </tr>
+                  )}
+                  {filteredAffiliates.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {row.affiliate?.full_name || t('common.unknown')}
+                        </div>
+                        <div className="text-xs text-gray-500">{row.affiliate?.email}</div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{row.code}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.driverCount || 0}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {row.lastDriverAt ? new Date(row.lastDriverAt).toLocaleDateString() : t('common.not_available')}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {row.affiliate?.phone || row.affiliate?.email || t('common.not_available')}
                       </td>
                     </tr>
                   ))}

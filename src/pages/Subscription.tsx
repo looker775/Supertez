@@ -71,6 +71,7 @@ export default function SubscriptionPage() {
   const [displayCurrency, setDisplayCurrency] = useState<string>('USD');
   const [displayPrice, setDisplayPrice] = useState<number>(2);
   const [currencyNote, setCurrencyNote] = useState<string>('');
+  const [localEquivalent, setLocalEquivalent] = useState<{ currency: string; amount: number } | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(false);
   const emailReceiptsEnabled = import.meta.env.VITE_ENABLE_EMAIL_RECEIPTS === 'true';
 
@@ -139,6 +140,7 @@ export default function SubscriptionPage() {
     setDisplayCurrency(normalizeCurrency(baseCurrency));
     setDisplayPrice(roundAmount(basePrice, normalizeCurrency(baseCurrency)));
     setCurrencyNote('');
+    setLocalEquivalent(null);
 
     if (!countryCode) return;
 
@@ -147,6 +149,7 @@ export default function SubscriptionPage() {
       try {
         const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
         const resolvedCurrency = resolved.currency;
+        const rawCurrency = resolved.raw ? resolved.raw.toUpperCase() : undefined;
         const rate = await getExchangeRate(baseCurrency, resolvedCurrency);
         if (!rate) {
           setCurrencyNote(t('subscription.currency.note', {
@@ -161,9 +164,18 @@ export default function SubscriptionPage() {
         setDisplayCurrency(resolvedCurrency);
         setDisplayPrice(converted);
 
+        if (rawCurrency && rawCurrency !== resolvedCurrency) {
+          const rawRate = await getExchangeRate(baseCurrency, rawCurrency);
+          if (rawRate) {
+            const rawAmount = roundAmount(basePrice * rawRate, rawCurrency);
+            setLocalEquivalent({ currency: rawCurrency, amount: rawAmount });
+          }
+        }
+
         if (resolved.isFallback) {
           setCurrencyNote(t('subscription.currency.unsupported', {
-            defaultValue: 'PayPal does not support your local currency. Showing USD instead.',
+            defaultValue: 'PayPal does not support your local currency. Charging in {{currency}}.',
+            currency: resolvedCurrency,
           }));
         }
       } catch {
@@ -172,6 +184,7 @@ export default function SubscriptionPage() {
         }));
         setDisplayCurrency(normalizeCurrency(baseCurrency));
         setDisplayPrice(roundAmount(basePrice, normalizeCurrency(baseCurrency)));
+        setLocalEquivalent(null);
       } finally {
         setCurrencyLoading(false);
       }
@@ -496,6 +509,14 @@ export default function SubscriptionPage() {
                   <p className="text-3xl font-bold text-blue-600">
                     {formatCurrency(displayPrice, displayCurrency)}
                   </p>
+                  {localEquivalent && (
+                    <p className="text-xs text-gray-500">
+                      {t('subscription.currency.local_equivalent', {
+                        defaultValue: '≈ {{amount}} in your local currency',
+                        amount: formatCurrency(localEquivalent.amount, localEquivalent.currency),
+                      })}
+                    </p>
+                  )}
                   <p className="text-sm text-gray-500">{t('subscription.subscribe.per_month')}</p>
                 </div>
               </div>

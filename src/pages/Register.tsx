@@ -1,5 +1,5 @@
-﻿import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Mail, Lock, Eye, EyeOff, Car, User, Phone, MapPin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -15,10 +15,41 @@ export default function Register() {
     city: '',
     role: 'client',
   });
+  const [roleLocked, setRoleLocked] = useState(false);
+  const [affiliateRef, setAffiliateRef] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+
+  useEffect(() => {
+    const roleParam = searchParams.get('role');
+    const refParam = searchParams.get('ref');
+
+    if (roleParam && ['client', 'driver', 'affiliate'].includes(roleParam)) {
+      setFormData((prev) => ({ ...prev, role: roleParam }));
+      setRoleLocked(true);
+    }
+
+    if (refParam) {
+      setAffiliateRef(refParam);
+      try {
+        localStorage.setItem('affiliate_ref', refParam);
+      } catch {
+        // ignore storage errors
+      }
+    } else {
+      try {
+        const stored = localStorage.getItem('affiliate_ref');
+        if (stored) setAffiliateRef(stored);
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }, [searchParams]);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,6 +81,7 @@ export default function Register() {
     }
 
     try {
+      const affiliateCode = formData.role === 'driver' ? affiliateRef : null;
       const { data, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -57,7 +89,8 @@ export default function Register() {
           data: {
             full_name: formData.fullName,
             phone: trimmedPhone || undefined,
-            city: formData.city,
+            city: formData.role === 'affiliate' ? undefined : formData.city,
+            affiliate_code: affiliateCode || undefined,
             role: formData.role,
           },
         },
@@ -105,33 +138,39 @@ export default function Register() {
         <form className="mt-8 space-y-6" onSubmit={handleRegister}>
           <div className="space-y-4">
             {/* Role Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('register.role_label')}</label>
-              <div className="mt-1 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, role: 'client' })}
-                  className={`py-2 px-4 rounded-lg border-2 text-sm font-medium transition-colors ${
-                    formData.role === 'client'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {t('register.role_client')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, role: 'driver' })}
-                  className={`py-2 px-4 rounded-lg border-2 text-sm font-medium transition-colors ${
-                    formData.role === 'driver'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {t('register.role_driver')}
-                </button>
+            {!roleLocked ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('register.role_label')}</label>
+                <div className="mt-1 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, role: 'client' })}
+                    className={`py-2 px-4 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.role === 'client'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {t('register.role_client')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, role: 'driver' })}
+                    className={`py-2 px-4 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.role === 'driver'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {t('register.role_driver')}
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
+                {t('register.role_locked', { defaultValue: `Registering as ${formData.role}` })}
+              </div>
+            )}
 
             {/* Full Name */}
             <div>
@@ -192,7 +231,7 @@ export default function Register() {
                 <input
                   name="city"
                   type="text"
-                  required
+                  required={formData.role !== 'affiliate'}
                   value={formData.city}
                   onChange={handleChange}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -213,7 +252,7 @@ export default function Register() {
                   value={formData.password}
                   onChange={handleChange}
                   className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="••••••••"
+                  placeholder="********"
                 />
                 <button
                   type="button"
@@ -237,7 +276,7 @@ export default function Register() {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="••••••••"
+                  placeholder="********"
                 />
               </div>
             </div>

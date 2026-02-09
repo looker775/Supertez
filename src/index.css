@@ -7,7 +7,7 @@
   }
 
   body {
-    font-family: "Space Grotesk", "Noto Sans", system-ui, sans-serif;
+    font-family: "Noto Sans", "Space Grotesk", system-ui, sans-serif;
     background:
       radial-gradient(1200px 800px at 15% -10%, rgba(15, 118, 110, 0.18), transparent 60%),
       radial-gradient(900px 700px at 95% 10%, rgba(249, 115, 22, 0.14), transparent 60%),
@@ -17,7 +17,7 @@
   }
 
   h1, h2, h3, h4, h5 {
-    font-family: "Fraunces", "Noto Serif", serif;
+    font-family: "Noto Serif", "Fraunces", serif;
     letter-spacing: -0.02em;
   }
 

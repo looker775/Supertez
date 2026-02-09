@@ -100,6 +100,9 @@ export default function Login() {
           case 'client':
             navigate('/client');
             break;
+          case 'affiliate':
+            navigate('/affiliate/dashboard');
+            break;
           default:
             navigate('/');
         }
