@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Loader2, Eye, EyeOff, Mail, Lock, Car } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export default function Login() {
@@ -151,8 +151,8 @@ export default function Login() {
       <div className="app-auth-shell">
         <div className="app-auth-card">
           <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-teal-100 to-orange-100 rounded-full mb-4">
-            <Mail className="h-8 w-8 text-teal-700" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/80 rounded-full mb-4 shadow-lg border border-slate-200">
+            <img src="/kk.png" alt="Supertez" className="h-10 w-auto" />
           </div>
           <h2 className="text-3xl font-bold text-gray-900">
             <span className="app-gradient-text">{t('login.reset_title')}</span>
@@ -222,8 +222,8 @@ export default function Login() {
     <div className="app-auth-shell">
       <div className="app-auth-card">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-teal-500 to-orange-400 rounded-full mb-4 shadow-lg">
-            <Car className="h-8 w-8 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/80 rounded-full mb-4 shadow-lg border border-slate-200">
+            <img src="/kk.png" alt="Supertez" className="h-10 w-auto" />
           </div>
           <h2 className="text-3xl font-bold text-gray-900">
             <span className="app-gradient-text">{t('login.title')}</span>

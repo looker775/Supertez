@@ -115,8 +115,8 @@ export default function Register() {
         {/* Header */}
         <div className="text-center">
           <div className="flex justify-center">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-orange-400 text-white shadow-lg">
-              <Car className="h-7 w-7" />
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/80 shadow-lg border border-slate-200">
+              <img src="/kk.png" alt="Supertez" className="h-9 w-auto" />
             </div>
           </div>
           <h2 className="mt-4 text-3xl font-bold text-gray-900">
