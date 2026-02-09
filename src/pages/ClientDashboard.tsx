@@ -1489,7 +1489,7 @@ export default function ClientDashboard() {
                   )}
                 </p>
                 {localCurrency && localRate && (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-base font-semibold text-slate-700">
                     ≈ {formatCurrency(
                       roundAmount(Number(activeRide.final_price || 0) * localRate, localCurrency),
                       localCurrency
@@ -1992,7 +1992,7 @@ export default function ClientDashboard() {
                       )}
                     </p>
                     {localCurrency && localRate && (
-                      <p className="text-xs text-gray-500">
+                      <p className="text-base font-semibold text-slate-700">
                         ≈ {formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
                       </p>
                     )}
