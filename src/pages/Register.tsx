@@ -81,7 +81,7 @@ export default function Register() {
     }
 
     try {
-      const affiliateCode = formData.role === 'driver' ? affiliateRef : null;
+      const affiliateCode = formData.role === 'client' ? affiliateRef : null;
       const { data, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,

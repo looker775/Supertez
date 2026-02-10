@@ -10,7 +10,7 @@ interface AffiliateCode {
   created_at: string;
 }
 
-interface DriverRow {
+interface ClientRow {
   id: string;
   full_name: string;
   email?: string;
@@ -30,23 +30,23 @@ export default function AffiliateDashboard() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
   const [affiliateCode, setAffiliateCode] = useState<AffiliateCode | null>(null);
-  const [drivers, setDrivers] = useState<DriverRow[]>([]);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [copyState, setCopyState] = useState('');
 
   const referralLink = useMemo(() => {
     if (!affiliateCode?.code) return '';
-    return `${window.location.origin}/register?role=driver&ref=${affiliateCode.code}`;
+    return `${window.location.origin}/register?role=client&ref=${affiliateCode.code}`;
   }, [affiliateCode?.code]);
 
-  const loadDrivers = useCallback(async (code: string) => {
+  const loadClients = useCallback(async (code: string) => {
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, email, phone, city, created_at')
-      .eq('role', 'driver')
+      .eq('role', 'client')
       .eq('affiliate_code', code)
       .order('created_at', { ascending: false });
-    setDrivers((data as DriverRow[]) || []);
+    setClients((data as ClientRow[]) || []);
   }, []);
 
   const ensureAffiliateCode = useCallback(async (affiliateId: string) => {
@@ -58,7 +58,7 @@ export default function AffiliateDashboard() {
 
     if (existing?.code) {
       setAffiliateCode(existing as AffiliateCode);
-      await loadDrivers(existing.code);
+      await loadClients(existing.code);
       return;
     }
 
@@ -77,9 +77,9 @@ export default function AffiliateDashboard() {
 
     if (created) {
       setAffiliateCode(created);
-      await loadDrivers(created.code);
+      await loadClients(created.code);
     }
-  }, [loadDrivers]);
+  }, [loadClients]);
 
   useEffect(() => {
     let active = true;
@@ -127,7 +127,7 @@ export default function AffiliateDashboard() {
             {t('affiliate.dashboard_title', { defaultValue: 'Affiliate CRM' })}
           </h1>
           <p className="text-sm text-slate-500">
-            {t('affiliate.dashboard_subtitle', { defaultValue: 'Track drivers who signed up through your link.' })}
+            {t('affiliate.dashboard_subtitle', { defaultValue: 'Track clients who signed up through your link.' })}
           </p>
         </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-4 py-2 text-xs font-semibold uppercase tracking-widest">
@@ -168,11 +168,11 @@ export default function AffiliateDashboard() {
         <div className="app-card p-6">
           <div className="flex items-center gap-2 text-slate-600">
             <Users className="h-5 w-5" />
-            <p className="text-sm">{t('affiliate.total_drivers', { defaultValue: 'Total drivers referred' })}</p>
-          </div>
-          <p className="mt-2 text-3xl font-bold text-slate-900">{drivers.length}</p>
+              <p className="text-sm">{t('affiliate.total_drivers', { defaultValue: 'Total clients referred' })}</p>
+            </div>
+          <p className="mt-2 text-3xl font-bold text-slate-900">{clients.length}</p>
           <p className="text-xs text-slate-500 mt-2">
-            {t('affiliate.total_hint', { defaultValue: 'Counts update automatically after driver signup.' })}
+            {t('affiliate.total_hint', { defaultValue: 'Counts update automatically after client signup.' })}
           </p>
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function AffiliateDashboard() {
       <div className="app-card overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100">
           <h2 className="text-sm font-semibold text-slate-900">
-            {t('affiliate.driver_list', { defaultValue: 'Referred drivers' })}
+            {t('affiliate.driver_list', { defaultValue: 'Referred clients' })}
           </h2>
         </div>
         <div className="overflow-x-auto">
@@ -194,20 +194,20 @@ export default function AffiliateDashboard() {
               </tr>
             </thead>
             <tbody>
-              {drivers.length === 0 && (
+              {clients.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-6 py-6 text-center text-slate-500">
-                    {t('affiliate.empty', { defaultValue: 'No driver signups yet.' })}
+                    {t('affiliate.empty', { defaultValue: 'No client signups yet.' })}
                   </td>
                 </tr>
               )}
-              {drivers.map((driver) => (
-                <tr key={driver.id} className="border-t border-slate-100">
-                  <td className="px-6 py-3 font-medium text-slate-900">{driver.full_name}</td>
-                  <td className="px-6 py-3 text-slate-600">{driver.phone || driver.email || t('common.not_available')}</td>
-                  <td className="px-6 py-3 text-slate-600">{driver.city || t('common.unknown')}</td>
+              {clients.map((client) => (
+                <tr key={client.id} className="border-t border-slate-100">
+                  <td className="px-6 py-3 font-medium text-slate-900">{client.full_name}</td>
+                  <td className="px-6 py-3 text-slate-600">{client.phone || client.email || t('common.not_available')}</td>
+                  <td className="px-6 py-3 text-slate-600">{client.city || t('common.unknown')}</td>
                   <td className="px-6 py-3 text-slate-600">
-                    {driver.created_at ? new Date(driver.created_at).toLocaleDateString() : t('common.not_available')}
+                    {client.created_at ? new Date(client.created_at).toLocaleDateString() : t('common.not_available')}
                   </td>
                 </tr>
               ))}

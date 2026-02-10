@@ -389,7 +389,7 @@ export default function AdminDashboard() {
     const { data: driversData } = await supabase
       .from('profiles')
       .select('id, affiliate_code, created_at')
-      .eq('role', 'driver')
+      .eq('role', 'client')
       .not('affiliate_code', 'is', null);
 
     const stats = new Map<string, { count: number; lastAt?: string | null }>();
