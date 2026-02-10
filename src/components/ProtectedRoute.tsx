@@ -47,7 +47,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   }
 
   if (profile.role === 'admin') {
-    const approved = profile.admin_approved !== false;
+    const approved = profile.admin_approved === true;
     const blocked = profile.admin_blocked === true;
     if (!approved || blocked) {
       return (
