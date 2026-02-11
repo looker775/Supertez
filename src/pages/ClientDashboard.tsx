@@ -89,6 +89,7 @@ interface Ride {
   final_price: number;
   base_price?: number | null;
   allow_driver_offers?: boolean | null;
+  client_offer_price?: number | null;
   driver_id?: string;
   driver_lat?: number | null;
   driver_lng?: number | null;
@@ -353,6 +354,7 @@ export default function ClientDashboard() {
   const [rideOffers, setRideOffers] = useState<RideOffer[]>([]);
   const [offerLoading, setOfferLoading] = useState(false);
   const [counterPrices, setCounterPrices] = useState<Record<string, string>>({});
+  const [clientOfferInput, setClientOfferInput] = useState('');
   const [driverProfile, setDriverProfile] = useState<{ full_name?: string; phone?: string } | null>(null);
   const [showDriverPhone, setShowDriverPhone] = useState(false);
   const [chatMessages, setChatMessages] = useState<RideMessage[]>([]);
@@ -400,6 +402,13 @@ export default function ClientDashboard() {
       // ignore audio errors
     }
   }, []);
+
+  useEffect(() => {
+    if (!activeRide?.id) return;
+    if (activeRide.client_offer_price !== null && activeRide.client_offer_price !== undefined) {
+      setClientOfferInput(String(activeRide.client_offer_price));
+    }
+  }, [activeRide?.id, activeRide?.client_offer_price]);
 
   const showStatusNotification = useCallback((message: string) => {
     const title = t('client.notifications.title', { defaultValue: 'Ride Update' });
@@ -1102,6 +1111,32 @@ export default function ClientDashboard() {
     }
   };
 
+  const updateClientOfferPrice = async () => {
+    if (!activeRide || !currentUserId) return;
+    const value = clientOfferInput.trim();
+    const parsed = value ? Number(value) : null;
+    const offerPrice = parsed && parsed > 0 ? parsed : null;
+    setOfferLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .update({ client_offer_price: offerPrice })
+        .eq('id', activeRide.id)
+        .eq('client_id', currentUserId)
+        .eq('status', 'pending')
+        .select('*')
+        .maybeSingle();
+      if (error) throw error;
+      if (data) setActiveRide(data);
+      setSuccess(t('client.offers.client_offer_saved', { defaultValue: 'Your offer was saved.' }));
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err?.message || t('client.errors.offer_failed', { defaultValue: 'Failed to update offer.' }));
+    } finally {
+      setOfferLoading(false);
+    }
+  };
+
   const normalizeText = useCallback((value: string) => {
     return value
       .toLowerCase()
@@ -1436,6 +1471,9 @@ export default function ClientDashboard() {
       }
       const allowDriverOffers = resolvedCountry ? offerCountries.includes(resolvedCountry) : false;
 
+      const parsedClientOffer = clientOfferInput.trim() ? Number(clientOfferInput) : null;
+      const clientOfferPrice = parsedClientOffer && parsedClientOffer > 0 ? parsedClientOffer : null;
+
       const { data, error: insertError } = await supabase
         .from('rides')
         .insert({
@@ -1453,6 +1491,7 @@ export default function ClientDashboard() {
           base_price: price,
           final_price: allowDriverOffers ? null : price,
           allow_driver_offers: allowDriverOffers,
+          client_offer_price: allowDriverOffers ? clientOfferPrice : null,
           status: 'pending',
           payment_method: paymentMethod,
         })
@@ -1469,6 +1508,7 @@ export default function ClientDashboard() {
       setPickup(null);
       setDropoff(null);
       setPassengers(1);
+      setClientOfferInput('');
       
       setTimeout(() => setSuccess(''), 5000);
     } catch (err: any) {
@@ -1709,6 +1749,29 @@ export default function ClientDashboard() {
               </button>
             </div>
 
+            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+              <div className="text-sm font-medium text-gray-700">
+                {t('client.offers.your_price', { defaultValue: 'Your price offer' })}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={clientOfferInput}
+                  onChange={(e) => setClientOfferInput(e.target.value)}
+                  placeholder={t('client.offers.your_price_placeholder', { defaultValue: 'Enter your price' })}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={updateClientOfferPrice}
+                  disabled={offerLoading}
+                  className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {t('client.offers.save', { defaultValue: 'Save' })}
+                </button>
+              </div>
+            </div>
+
             {rideOffers.length === 0 ? (
               <div className="bg-gray-50 border border-gray-200 text-gray-600 rounded-lg p-4 text-sm">
                 {t('client.offers.none', { defaultValue: 'Waiting for driver offers...' })}
@@ -1873,6 +1936,10 @@ export default function ClientDashboard() {
       </div>
     );
   }
+
+  const offerCountries = normalizeOfferCountries(settings?.driver_offer_countries);
+  const resolvedCountryForOffer = (pickup?.countryCode || profileCountry || countryCode || '').toUpperCase();
+  const isOfferMode = resolvedCountryForOffer && offerCountries.includes(resolvedCountryForOffer);
 
   // Render new ride form
   return (
@@ -2295,6 +2362,30 @@ export default function ClientDashboard() {
                 </div>
               )}
             </div>
+
+            {isOfferMode && (
+              <div className="mb-4 space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  {t('client.offers.your_price', { defaultValue: 'Your price offer' })}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={clientOfferInput}
+                    onChange={(e) => setClientOfferInput(e.target.value)}
+                    placeholder={t('client.offers.your_price_placeholder', { defaultValue: 'Enter your price' })}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  <span className="text-xs text-gray-500">
+                    {settings?.currency || DEFAULT_SETTINGS.currency || 'USD'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {t('client.offers.your_price_hint', { defaultValue: 'Drivers will respond with their offers. You can accept or counter.' })}
+                </p>
+              </div>
+            )}
 
             <button
               onClick={createRide}

@@ -47,6 +47,7 @@ export interface Ride {
   base_price?: number;
   final_price?: number;
   allow_driver_offers?: boolean;
+  client_offer_price?: number | null;
   currency?: string;
   status: 'pending' | 'driver_assigned' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled';
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded';

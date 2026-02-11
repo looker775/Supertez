@@ -39,6 +39,7 @@ interface Ride {
   base_price: number;
   final_price: number;
   allow_driver_offers?: boolean | null;
+  client_offer_price?: number | null;
   status: string;
   created_at: string;
 }
@@ -1044,6 +1045,43 @@ export default function DriverDashboard() {
     }
   };
 
+  const acceptClientOffer = async (ride: Ride) => {
+    if (!profile?.id) return;
+    const clientPrice = Number(ride.client_offer_price ?? 0);
+    if (!clientPrice) {
+      setError(t('driver.errors.invalid_price', { defaultValue: 'Invalid client price.' }));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: updatedRide, error } = await supabase
+        .from('rides')
+        .update({
+          driver_id: profile.id,
+          status: 'driver_assigned',
+          final_price: clientPrice,
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', ride.id)
+        .eq('status', 'pending')
+        .is('driver_id', null)
+        .select('*')
+        .maybeSingle();
+
+      if (error || !updatedRide) {
+        throw error || new Error('Ride already taken');
+      }
+
+      setActiveRide(updatedRide);
+      setAvailableRides((prev) => prev.filter((item) => item.id !== ride.id));
+    } catch (err: any) {
+      setError(err?.message || t('driver.errors.accept_failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const acceptRide = async (rideId: string) => {
     if (!profile) return;
 
@@ -1661,6 +1699,15 @@ export default function DriverDashboard() {
                           <p className="text-lg font-bold text-slate-900">
                             {t('driver.available.offer_required', { defaultValue: 'Offer required' })}
                           </p>
+                          {ride.client_offer_price && (
+                            <p className="text-sm text-gray-600">
+                              {t('driver.available.client_offer', { defaultValue: 'Client offer' })}:{' '}
+                              {formatCurrency(
+                                Number(ride.client_offer_price),
+                                (settings?.currency || 'USD').toUpperCase()
+                              )}
+                            </p>
+                          )}
                           {offer?.price_offer && (
                             <p className="text-sm text-gray-500">
                               {t('driver.available.your_offer', { defaultValue: 'Your offer' })}:{' '}
@@ -1720,21 +1767,31 @@ export default function DriverDashboard() {
                           {t('driver.available.accept_counter', { defaultValue: 'Accept counter' })}
                         </button>
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            value={offerInputs[ride.id] || ''}
-                            onChange={(e) => setOfferInputs((prev) => ({ ...prev, [ride.id]: e.target.value }))}
-                            placeholder={t('driver.available.offer_placeholder', { defaultValue: 'Your price' })}
-                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                          />
-                          <button
-                            onClick={() => sendOffer(ride)}
-                            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-                          >
-                            {offer ? t('driver.available.update_offer', { defaultValue: 'Update' }) : t('driver.available.send_offer', { defaultValue: 'Send' })}
-                          </button>
+                        <div className="space-y-2">
+                          {ride.client_offer_price && (
+                            <button
+                              onClick={() => acceptClientOffer(ride)}
+                              className="w-full px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+                            >
+                              {t('driver.available.accept_client_price', { defaultValue: 'Accept client price' })}
+                            </button>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              value={offerInputs[ride.id] || ''}
+                              onChange={(e) => setOfferInputs((prev) => ({ ...prev, [ride.id]: e.target.value }))}
+                              placeholder={t('driver.available.offer_placeholder', { defaultValue: 'Your price' })}
+                              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                            <button
+                              onClick={() => sendOffer(ride)}
+                              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                            >
+                              {offer ? t('driver.available.update_offer', { defaultValue: 'Update' }) : t('driver.available.send_offer', { defaultValue: 'Send' })}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>

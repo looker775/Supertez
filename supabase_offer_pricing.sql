@@ -6,6 +6,9 @@ ALTER TABLE public.app_settings
 ALTER TABLE public.rides
   ADD COLUMN IF NOT EXISTS allow_driver_offers boolean DEFAULT false;
 
+ALTER TABLE public.rides
+  ADD COLUMN IF NOT EXISTS client_offer_price numeric;
+
 -- Expand ride_offers to support negotiation
 ALTER TABLE public.ride_offers
   ADD COLUMN IF NOT EXISTS price_offer numeric,
@@ -33,3 +36,9 @@ CREATE POLICY "Clients can update offers for their rides" ON public.ride_offers
       AND r.client_id = auth.uid()
     )
   );
+
+-- Allow clients to update their own rides (for offer price / cancellation)
+DROP POLICY IF EXISTS "Clients can update own rides" ON public.rides;
+CREATE POLICY "Clients can update own rides" ON public.rides
+  FOR UPDATE USING (auth.uid() = client_id)
+  WITH CHECK (auth.uid() = client_id);
