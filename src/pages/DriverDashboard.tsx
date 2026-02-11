@@ -1593,17 +1593,19 @@ export default function DriverDashboard() {
               </>
             )}
             
-            {availableRides.map((ride) => (
+            {availableRides.map((ride) => {
+              const offerMode = ride.allow_driver_offers || ride.final_price === null;
+              return (
               <Marker key={ride.id} position={[ride.pickup_lat, ride.pickup_lng]} icon={pickupIcon}>
                 <Popup>
                   <div className="p-2">
                     <p className="font-semibold">
-                      {ride.allow_driver_offers
+                      {offerMode
                         ? t('driver.available.offer_required', { defaultValue: 'Offer required' })
                         : `$${ride.final_price ?? ride.base_price}`}
                     </p>
                     <p className="text-sm">{ride.pickup_address}</p>
-                    {!ride.allow_driver_offers && (
+                    {!offerMode && (
                       <button
                         onClick={() => acceptRide(ride.id)}
                         className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm"
@@ -1614,7 +1616,8 @@ export default function DriverDashboard() {
                   </div>
                 </Popup>
               </Marker>
-            ))}
+              );
+            })}
           </MapContainer>
           </div>
         </div>
@@ -1646,13 +1649,14 @@ export default function DriverDashboard() {
             </div>
           ) : (
             availableRides.map((ride) => {
+              const offerMode = ride.allow_driver_offers || ride.final_price === null;
               const offer = myOffers[ride.id];
               const hasCounter = !!offer?.client_counter_price && offer?.status === 'countered';
               return (
                 <div key={ride.id} className="bg-white rounded-xl shadow-lg p-4 hover:shadow-xl transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      {ride.allow_driver_offers ? (
+                      {offerMode ? (
                         <>
                           <p className="text-lg font-bold text-slate-900">
                             {t('driver.available.offer_required', { defaultValue: 'Offer required' })}
@@ -1706,7 +1710,7 @@ export default function DriverDashboard() {
                     )}
                   </div>
 
-                  {ride.allow_driver_offers ? (
+                  {offerMode ? (
                     <div className="space-y-2">
                       {hasCounter && offer ? (
                         <button

@@ -1532,7 +1532,7 @@ export default function ClientDashboard() {
       ? estimateEtaMinutes(driverDistanceKm, activeRide.driver_speed_kmh)
       : null;
     const ridePrice = Number(activeRide.final_price ?? activeRide.base_price ?? 0);
-    const isOfferRide = !!activeRide.allow_driver_offers;
+    const isOfferRide = activeRide.allow_driver_offers === true || activeRide.final_price === null;
     const priceLabel = isOfferRide && activeRide.status === 'pending'
       ? t('client.active.estimated_price', { defaultValue: 'Estimated price' })
       : t('client.active.price');
@@ -1690,7 +1690,7 @@ export default function ClientDashboard() {
           </div>
         </div>
 
-        {activeRide.status === 'pending' && activeRide.allow_driver_offers && (
+        {activeRide.status === 'pending' && (activeRide.allow_driver_offers || activeRide.final_price === null) && (
           <div className="bg-white rounded-xl shadow-lg p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -1790,7 +1790,7 @@ export default function ClientDashboard() {
           </div>
         )}
 
-        {activeRide.status === 'pending' && !activeRide.allow_driver_offers && (
+        {activeRide.status === 'pending' && !(activeRide.allow_driver_offers || activeRide.final_price === null) && (
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <Loader2 className="h-12 w-12 text-blue-600 animate-spin mx-auto mb-4" />
             <h2 className="text-lg font-semibold">{t('client.active.waiting_title')}</h2>
