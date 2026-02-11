@@ -963,6 +963,21 @@ export default function ClientDashboard() {
     loadActiveRideRef.current = loadActiveRide;
   }, [loadActiveRide]);
 
+  const loadRideOffers = useCallback(async (rideId: string) => {
+    const { data, error } = await supabase
+      .from('ride_offers')
+      .select('*')
+      .eq('ride_id', rideId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Failed to load ride offers:', error);
+      return;
+    }
+
+    setRideOffers((data || []) as RideOffer[]);
+  }, []);
+
   useEffect(() => {
     if (!activeRide?.id || !activeRide.allow_driver_offers) {
       setRideOffers([]);
@@ -986,21 +1001,6 @@ export default function ClientDashboard() {
       subscription.unsubscribe();
     };
   }, [activeRide?.id, activeRide?.allow_driver_offers, loadRideOffers]);
-
-  const loadRideOffers = useCallback(async (rideId: string) => {
-    const { data, error } = await supabase
-      .from('ride_offers')
-      .select('*')
-      .eq('ride_id', rideId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Failed to load ride offers:', error);
-      return;
-    }
-
-    setRideOffers((data || []) as RideOffer[]);
-  }, []);
 
   const acceptOffer = async (offer: RideOffer) => {
     if (!activeRide || !currentUserId) return;
