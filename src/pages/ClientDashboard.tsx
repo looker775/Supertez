@@ -1404,7 +1404,8 @@ export default function ClientDashboard() {
         .filter(Boolean);
     }
     if (typeof value === 'string') {
-      return value
+      const cleaned = value.replace(/[{}"]/g, '');
+      return cleaned
         .split(/[,\n]/)
         .map((entry) => entry.trim().toUpperCase())
         .filter(Boolean);
@@ -1428,8 +1429,12 @@ export default function ClientDashboard() {
       const distance = calculateDistance(pickup.lat, pickup.lng, dropoff.lat, dropoff.lng);
       const price = calculatePrice();
       const offerCountries = normalizeOfferCountries(settings?.driver_offer_countries);
-      const resolvedCountry = (pickup.countryCode || profileCountry || countryCode || '').toUpperCase();
-      const allowDriverOffers = offerCountries.includes(resolvedCountry);
+      let resolvedCountry = (pickup.countryCode || profileCountry || countryCode || '').toUpperCase();
+      if (!resolvedCountry) {
+        const ipCountry = await detectCountryCode();
+        resolvedCountry = ipCountry?.toUpperCase() || '';
+      }
+      const allowDriverOffers = resolvedCountry ? offerCountries.includes(resolvedCountry) : false;
 
       const { data, error: insertError } = await supabase
         .from('rides')
