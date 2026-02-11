@@ -69,6 +69,7 @@ const DEFAULT_SETTINGS = {
   fixed_price_amount: 0,
   price_per_km: 1,
   currency: 'USD',
+  driver_offer_countries: [],
 };
 
 // Types
@@ -86,6 +87,8 @@ interface Ride {
   pickup_address: string;
   drop_address: string;
   final_price: number;
+  base_price?: number | null;
+  allow_driver_offers?: boolean | null;
   driver_id?: string;
   driver_lat?: number | null;
   driver_lng?: number | null;
@@ -97,6 +100,17 @@ interface Ride {
   drop_lat: number;
   drop_lng: number;
   payment_method?: string;
+}
+
+interface RideOffer {
+  id: string;
+  ride_id: string;
+  driver_id: string;
+  driver_name?: string | null;
+  price_offer?: number | null;
+  client_counter_price?: number | null;
+  status?: string | null;
+  created_at: string;
 }
 
 interface RideMessage {
@@ -336,6 +350,9 @@ export default function ClientDashboard() {
   const [countryCode, setCountryCode] = useState<string | undefined>();
   const [localCurrency, setLocalCurrency] = useState<string | null>(null);
   const [localRate, setLocalRate] = useState<number | null>(null);
+  const [rideOffers, setRideOffers] = useState<RideOffer[]>([]);
+  const [offerLoading, setOfferLoading] = useState(false);
+  const [counterPrices, setCounterPrices] = useState<Record<string, string>>({});
   const [driverProfile, setDriverProfile] = useState<{ full_name?: string; phone?: string } | null>(null);
   const [showDriverPhone, setShowDriverPhone] = useState(false);
   const [chatMessages, setChatMessages] = useState<RideMessage[]>([]);
@@ -946,6 +963,145 @@ export default function ClientDashboard() {
     loadActiveRideRef.current = loadActiveRide;
   }, [loadActiveRide]);
 
+  useEffect(() => {
+    if (!activeRide?.id || !activeRide.allow_driver_offers) {
+      setRideOffers([]);
+      return;
+    }
+
+    loadRideOffers(activeRide.id);
+    const subscription = supabase
+      .channel(`ride-offers-${activeRide.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'ride_offers',
+        filter: `ride_id=eq.${activeRide.id}`,
+      }, () => {
+        loadRideOffers(activeRide.id);
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [activeRide?.id, activeRide?.allow_driver_offers, loadRideOffers]);
+
+  const loadRideOffers = useCallback(async (rideId: string) => {
+    const { data, error } = await supabase
+      .from('ride_offers')
+      .select('*')
+      .eq('ride_id', rideId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Failed to load ride offers:', error);
+      return;
+    }
+
+    setRideOffers((data || []) as RideOffer[]);
+  }, []);
+
+  const acceptOffer = async (offer: RideOffer) => {
+    if (!activeRide || !currentUserId) return;
+    const agreedPrice = Number(offer.client_counter_price ?? offer.price_offer ?? 0);
+    if (!agreedPrice) {
+      setError(t('client.errors.invalid_price', { defaultValue: 'Invalid offer price.' }));
+      return;
+    }
+    setOfferLoading(true);
+    try {
+      const { data: updatedRide, error } = await supabase
+        .from('rides')
+        .update({
+          driver_id: offer.driver_id,
+          status: 'driver_assigned',
+          final_price: agreedPrice,
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', activeRide.id)
+        .eq('client_id', currentUserId)
+        .eq('status', 'pending')
+        .is('driver_id', null)
+        .select('*')
+        .maybeSingle();
+
+      if (error || !updatedRide) {
+        throw error || new Error('Failed to accept offer');
+      }
+
+      await supabase
+        .from('ride_offers')
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
+        .eq('id', offer.id);
+
+      await supabase
+        .from('ride_offers')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('ride_id', activeRide.id)
+        .neq('id', offer.id);
+
+      setActiveRide(updatedRide);
+      setSuccess(t('client.notifications.driver_assigned'));
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (err: any) {
+      setError(err?.message || t('client.errors.accept_failed', { defaultValue: 'Failed to accept offer.' }));
+    } finally {
+      setOfferLoading(false);
+    }
+  };
+
+  const rejectOffer = async (offerId: string) => {
+    if (!activeRide) return;
+    setOfferLoading(true);
+    try {
+      await supabase
+        .from('ride_offers')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('id', offerId)
+        .eq('ride_id', activeRide.id);
+      setRideOffers((prev) => prev.map((offer) => (
+        offer.id === offerId ? { ...offer, status: 'rejected' } : offer
+      )));
+    } catch (err: any) {
+      setError(err?.message || t('client.errors.reject_failed', { defaultValue: 'Failed to reject offer.' }));
+    } finally {
+      setOfferLoading(false);
+    }
+  };
+
+  const counterOffer = async (offer: RideOffer) => {
+    if (!activeRide) return;
+    const input = counterPrices[offer.id];
+    const counterPrice = Number(input);
+    if (!counterPrice || counterPrice <= 0) {
+      setError(t('client.errors.invalid_price', { defaultValue: 'Enter a valid price.' }));
+      return;
+    }
+    setOfferLoading(true);
+    try {
+      await supabase
+        .from('ride_offers')
+        .update({
+          client_counter_price: counterPrice,
+          client_countered_at: new Date().toISOString(),
+          status: 'countered',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', offer.id)
+        .eq('ride_id', activeRide.id);
+      setRideOffers((prev) => prev.map((item) => (
+        item.id === offer.id
+          ? { ...item, client_counter_price: counterPrice, status: 'countered' }
+          : item
+      )));
+    } catch (err: any) {
+      setError(err?.message || t('client.errors.counter_failed', { defaultValue: 'Failed to send counter offer.' }));
+    } finally {
+      setOfferLoading(false);
+    }
+  };
+
   const normalizeText = useCallback((value: string) => {
     return value
       .toLowerCase()
@@ -1241,6 +1397,21 @@ export default function ClientDashboard() {
     return Math.max(0, Math.round(price * passengerCount));
   };
 
+  const normalizeOfferCountries = (value: unknown) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => String(entry).trim().toUpperCase())
+        .filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(/[,\n]/)
+        .map((entry) => entry.trim().toUpperCase())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
   const createRide = async () => {
     if (!pickup || !dropoff) {
       setError('Please select both pickup and drop-off locations');
@@ -1256,6 +1427,9 @@ export default function ClientDashboard() {
 
       const distance = calculateDistance(pickup.lat, pickup.lng, dropoff.lat, dropoff.lng);
       const price = calculatePrice();
+      const offerCountries = normalizeOfferCountries(settings?.driver_offer_countries);
+      const resolvedCountry = (pickup.countryCode || profileCountry || countryCode || '').toUpperCase();
+      const allowDriverOffers = offerCountries.includes(resolvedCountry);
 
       const { data, error: insertError } = await supabase
         .from('rides')
@@ -1272,7 +1446,8 @@ export default function ClientDashboard() {
           distance_km: Math.round(distance * 100) / 100,
           passengers: passengers,
           base_price: price,
-          final_price: price,
+          final_price: allowDriverOffers ? null : price,
+          allow_driver_offers: allowDriverOffers,
           status: 'pending',
           payment_method: paymentMethod,
         })
@@ -1351,6 +1526,11 @@ export default function ClientDashboard() {
     const etaMinutes = driverDistanceKm !== null
       ? estimateEtaMinutes(driverDistanceKm, activeRide.driver_speed_kmh)
       : null;
+    const ridePrice = Number(activeRide.final_price ?? activeRide.base_price ?? 0);
+    const isOfferRide = !!activeRide.allow_driver_offers;
+    const priceLabel = isOfferRide && activeRide.status === 'pending'
+      ? t('client.active.estimated_price', { defaultValue: 'Estimated price' })
+      : t('client.active.price');
     const driverSpeed = activeRide.driver_speed_kmh ? Math.round(activeRide.driver_speed_kmh) : null;
     const driverHeading = activeRide.driver_heading !== null && activeRide.driver_heading !== undefined
       ? Math.round(activeRide.driver_heading)
@@ -1480,18 +1660,18 @@ export default function ClientDashboard() {
 
           <div className="flex justify-between items-center pt-4 border-t">
             <div>
-              <p className="text-sm text-gray-500">{t('client.active.price')}</p>
+              <p className="text-sm text-gray-500">{priceLabel}</p>
               <div>
-                <p className="text-lg font-semibold text-gray-700">
+                <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                   {formatCurrency(
-                    Number(activeRide.final_price || 0),
+                    ridePrice,
                     (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
                   )}
                 </p>
                 {localCurrency && localRate && (
-                  <p className="text-3xl font-bold text-slate-900">
+                  <p className="text-4xl font-extrabold text-slate-900">
                     ≈ {formatCurrency(
-                      roundAmount(Number(activeRide.final_price || 0) * localRate, localCurrency),
+                      roundAmount(ridePrice * localRate, localCurrency),
                       localCurrency
                     )}
                   </p>
@@ -1505,7 +1685,107 @@ export default function ClientDashboard() {
           </div>
         </div>
 
-        {activeRide.status === 'pending' && (
+        {activeRide.status === 'pending' && activeRide.allow_driver_offers && (
+          <div className="bg-white rounded-xl shadow-lg p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold">
+                  {t('client.offers.title', { defaultValue: 'Driver offers' })}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {t('client.offers.subtitle', { defaultValue: 'Review offers or send a counter price.' })}
+                </p>
+              </div>
+              <button
+                onClick={() => activeRide?.id && loadRideOffers(activeRide.id)}
+                className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                {t('common.refresh', { defaultValue: 'Refresh' })}
+              </button>
+            </div>
+
+            {rideOffers.length === 0 ? (
+              <div className="bg-gray-50 border border-gray-200 text-gray-600 rounded-lg p-4 text-sm">
+                {t('client.offers.none', { defaultValue: 'Waiting for driver offers...' })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {rideOffers.map((offer) => {
+                  const offerPrice = Number(offer.price_offer ?? 0);
+                  const counterPrice = offer.client_counter_price ?? null;
+                  return (
+                    <div key={offer.id} className="border rounded-lg p-4 flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {offer.driver_name || t('client.offers.driver', { defaultValue: 'Driver offer' })}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {t('client.offers.offer_price', { defaultValue: 'Offer' })}:{' '}
+                            {formatCurrency(
+                              offerPrice,
+                              (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                            )}
+                          </p>
+                          {localCurrency && localRate && (
+                            <p className="text-sm text-gray-800">
+                              ≈ {formatCurrency(roundAmount(offerPrice * localRate, localCurrency), localCurrency)}
+                            </p>
+                          )}
+                          {counterPrice && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              {t('client.offers.counter_sent', { defaultValue: 'Counter sent' })}:{' '}
+                              {formatCurrency(counterPrice, (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase())}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-xs uppercase tracking-wide text-gray-400">
+                          {offer.status || 'pending'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => acceptOffer(offer)}
+                          disabled={offerLoading}
+                          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          {t('client.offers.accept', { defaultValue: 'Accept' })}
+                        </button>
+                        <button
+                          onClick={() => rejectOffer(offer.id)}
+                          disabled={offerLoading}
+                          className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 disabled:opacity-60"
+                        >
+                          {t('client.offers.reject', { defaultValue: 'Reject' })}
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={counterPrices[offer.id] || ''}
+                            onChange={(e) => setCounterPrices((prev) => ({ ...prev, [offer.id]: e.target.value }))}
+                            placeholder={t('client.offers.counter_placeholder', { defaultValue: 'Your price' })}
+                            className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm"
+                          />
+                          <button
+                            onClick={() => counterOffer(offer)}
+                            disabled={offerLoading}
+                            className="px-3 py-2 rounded-lg border border-blue-200 text-blue-700 text-sm font-semibold hover:bg-blue-50 disabled:opacity-60"
+                          >
+                            {t('client.offers.counter', { defaultValue: 'Counter' })}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeRide.status === 'pending' && !activeRide.allow_driver_offers && (
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <Loader2 className="h-12 w-12 text-blue-600 animate-spin mx-auto mb-4" />
             <h2 className="text-lg font-semibold">{t('client.active.waiting_title')}</h2>

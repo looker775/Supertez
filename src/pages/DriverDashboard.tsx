@@ -38,8 +38,18 @@ interface Ride {
   passengers: number;
   base_price: number;
   final_price: number;
+  allow_driver_offers?: boolean | null;
   status: string;
   created_at: string;
+}
+
+interface RideOffer {
+  id: string;
+  ride_id: string;
+  driver_id: string;
+  price_offer?: number | null;
+  client_counter_price?: number | null;
+  status?: string | null;
 }
 
 interface DriverLocation {
@@ -158,6 +168,8 @@ export default function DriverDashboard() {
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [availableRides, setAvailableRides] = useState<Ride[]>([]);
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
+  const [offerInputs, setOfferInputs] = useState<Record<string, string>>({});
+  const [myOffers, setMyOffers] = useState<Record<string, RideOffer>>({});
   const [settings, setSettings] = useState<any>(null);
   const [clientProfile, setClientProfile] = useState<{ full_name?: string; phone?: string } | null>(null);
   const [chatMessages, setChatMessages] = useState<RideMessage[]>([]);
@@ -179,6 +191,7 @@ export default function DriverDashboard() {
   // UI State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [mapCenter, setMapCenter] = useState<LatLngTuple>([43.238949, 76.889709]);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'ready' | 'denied' | 'unsupported'>('idle');
   const [gpsMessage, setGpsMessage] = useState('');
@@ -731,6 +744,21 @@ export default function DriverDashboard() {
       }
 
       setAvailableRides(filtered);
+      if (profile?.id && filtered.length > 0) {
+        const rideIds = filtered.map((ride) => ride.id);
+        const { data: offersData } = await supabase
+          .from('ride_offers')
+          .select('*')
+          .eq('driver_id', profile.id)
+          .in('ride_id', rideIds);
+        const offerMap: Record<string, RideOffer> = {};
+        (offersData || []).forEach((offer) => {
+          offerMap[offer.ride_id] = offer as RideOffer;
+        });
+        setMyOffers(offerMap);
+      } else {
+        setMyOffers({});
+      }
       const nextIds = new Set(filtered.map((ride) => ride.id));
       const prevIds = prevRideIdsRef.current;
       const newCount = Array.from(nextIds).filter((id) => !prevIds.has(id)).length;
@@ -930,6 +958,91 @@ export default function DriverDashboard() {
       navigator.geolocation.clearWatch(watchId);
     };
   }, [activeRide?.id, applyIpFallback, driverLocation, isAccuratePosition, profile?.id, pushDriverLocation, t]);
+
+  const sendOffer = async (ride: Ride) => {
+    if (!profile?.id) return;
+    const raw = offerInputs[ride.id];
+    const price = Number(raw);
+    if (!price || price <= 0) {
+      setError(t('driver.errors.invalid_price', { defaultValue: 'Enter a valid price.' }));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('ride_offers')
+        .upsert({
+          ride_id: ride.id,
+          driver_id: profile.id,
+          driver_lat: driverLocation?.lat,
+          driver_lng: driverLocation?.lng,
+          driver_name: profile.full_name || profile.email,
+          price_offer: price,
+          status: 'pending',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'ride_id,driver_id' })
+        .select('*')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setMyOffers((prev) => ({ ...prev, [ride.id]: data as RideOffer }));
+      }
+      setSuccess(t('driver.notifications.offer_sent', { defaultValue: 'Offer sent to client.' }));
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err?.message || t('driver.errors.offer_failed', { defaultValue: 'Failed to send offer.' }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const acceptCounterOffer = async (ride: Ride, offer: RideOffer) => {
+    if (!profile?.id) return;
+    const counterPrice = Number(offer.client_counter_price ?? 0);
+    if (!counterPrice) {
+      setError(t('driver.errors.invalid_price', { defaultValue: 'Invalid counter price.' }));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: updatedRide, error } = await supabase
+        .from('rides')
+        .update({
+          driver_id: profile.id,
+          status: 'driver_assigned',
+          final_price: counterPrice,
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', ride.id)
+        .eq('status', 'pending')
+        .is('driver_id', null)
+        .select('*')
+        .maybeSingle();
+
+      if (error || !updatedRide) {
+        throw error || new Error('Ride already taken');
+      }
+
+      await supabase
+        .from('ride_offers')
+        .update({
+          status: 'accepted',
+          price_offer: counterPrice,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', offer.id);
+
+      setActiveRide(updatedRide);
+      setAvailableRides((prev) => prev.filter((item) => item.id !== ride.id));
+    } catch (err: any) {
+      setError(err?.message || t('driver.errors.accept_failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const acceptRide = async (rideId: string) => {
     if (!profile) return;
@@ -1484,14 +1597,20 @@ export default function DriverDashboard() {
               <Marker key={ride.id} position={[ride.pickup_lat, ride.pickup_lng]} icon={pickupIcon}>
                 <Popup>
                   <div className="p-2">
-                    <p className="font-semibold">${ride.final_price ?? ride.base_price}</p>
+                    <p className="font-semibold">
+                      {ride.allow_driver_offers
+                        ? t('driver.available.offer_required', { defaultValue: 'Offer required' })
+                        : `$${ride.final_price ?? ride.base_price}`}
+                    </p>
                     <p className="text-sm">{ride.pickup_address}</p>
-                    <button
-                      onClick={() => acceptRide(ride.id)}
-                      className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      {t('driver.available.accept')}
-                    </button>
+                    {!ride.allow_driver_offers && (
+                      <button
+                        onClick={() => acceptRide(ride.id)}
+                        className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        {t('driver.available.accept')}
+                      </button>
+                    )}
                   </div>
                 </Popup>
               </Marker>
@@ -1526,44 +1645,106 @@ export default function DriverDashboard() {
               )}
             </div>
           ) : (
-            availableRides.map((ride) => (
-              <div key={ride.id} className="bg-white rounded-xl shadow-lg p-4 hover:shadow-xl transition-shadow">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="text-2xl font-bold text-gray-900">${ride.final_price ?? ride.base_price}</p>
-                    <p className="text-sm text-gray-500">{getRelativeTime(ride.created_at)}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
-                      {t('driver.available.passengers', { count: ride.passengers })}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-start space-x-2">
-                    <MapPin className="h-4 w-4 text-green-600 mt-1 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 line-clamp-2">{ride.pickup_address}</p>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <Navigation className="h-4 w-4 text-red-600 mt-1 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 line-clamp-2">{ride.drop_address}</p>
-                  </div>
-                  {ride.distance_km && (
-                    <div className="flex items-center space-x-2 text-sm text-gray-500">
-                      <span>📏 {ride.distance_km.toFixed(1)} km</span>
+            availableRides.map((ride) => {
+              const offer = myOffers[ride.id];
+              const hasCounter = !!offer?.client_counter_price && offer?.status === 'countered';
+              return (
+                <div key={ride.id} className="bg-white rounded-xl shadow-lg p-4 hover:shadow-xl transition-shadow">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      {ride.allow_driver_offers ? (
+                        <>
+                          <p className="text-lg font-bold text-slate-900">
+                            {t('driver.available.offer_required', { defaultValue: 'Offer required' })}
+                          </p>
+                          {offer?.price_offer && (
+                            <p className="text-sm text-gray-500">
+                              {t('driver.available.your_offer', { defaultValue: 'Your offer' })}:{' '}
+                              {formatCurrency(
+                                Number(offer.price_offer),
+                                (settings?.currency || 'USD').toUpperCase()
+                              )}
+                            </p>
+                          )}
+                          {hasCounter && (
+                            <p className="text-sm text-orange-600">
+                              {t('driver.available.counter_received', { defaultValue: 'Client counter' })}:{' '}
+                              {formatCurrency(
+                                Number(offer?.client_counter_price ?? 0),
+                                (settings?.currency || 'USD').toUpperCase()
+                              )}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-2xl font-bold text-gray-900">
+                          ${ride.final_price ?? ride.base_price}
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-500">{getRelativeTime(ride.created_at)}</p>
                     </div>
+                    <div className="text-right">
+                      <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
+                        {t('driver.available.passengers', { count: ride.passengers })}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-start space-x-2">
+                      <MapPin className="h-4 w-4 text-green-600 mt-1 flex-shrink-0" />
+                      <p className="text-sm text-gray-700 line-clamp-2">{ride.pickup_address}</p>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <Navigation className="h-4 w-4 text-red-600 mt-1 flex-shrink-0" />
+                      <p className="text-sm text-gray-700 line-clamp-2">{ride.drop_address}</p>
+                    </div>
+                    {ride.distance_km && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <span>📏 {ride.distance_km.toFixed(1)} km</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {ride.allow_driver_offers ? (
+                    <div className="space-y-2">
+                      {hasCounter && offer ? (
+                        <button
+                          onClick={() => acceptCounterOffer(ride, offer)}
+                          className="w-full bg-emerald-600 text-white py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors"
+                        >
+                          {t('driver.available.accept_counter', { defaultValue: 'Accept counter' })}
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={offerInputs[ride.id] || ''}
+                            onChange={(e) => setOfferInputs((prev) => ({ ...prev, [ride.id]: e.target.value }))}
+                            placeholder={t('driver.available.offer_placeholder', { defaultValue: 'Your price' })}
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                          />
+                          <button
+                            onClick={() => sendOffer(ride)}
+                            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                          >
+                            {offer ? t('driver.available.update_offer', { defaultValue: 'Update' }) : t('driver.available.send_offer', { defaultValue: 'Send' })}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => acceptRide(ride.id)}
+                      className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                    >
+                      {t('driver.available.accept')}
+                    </button>
                   )}
                 </div>
-
-                <button
-                  onClick={() => acceptRide(ride.id)}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                >
-                  {t('driver.available.accept')}
-                </button>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

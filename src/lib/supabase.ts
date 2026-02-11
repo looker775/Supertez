@@ -46,6 +46,7 @@ export interface Ride {
   passengers: number;
   base_price?: number;
   final_price?: number;
+  allow_driver_offers?: boolean;
   currency?: string;
   status: 'pending' | 'driver_assigned' | 'driver_arrived' | 'in_progress' | 'completed' | 'cancelled';
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded';
@@ -66,12 +67,13 @@ export interface RideOffer {
   driver_lat?: number;
   driver_lng?: number;
   driver_name: string;
+  price_offer?: number;
+  client_counter_price?: number | null;
   driver_phone?: string;
   driver_rating?: number;
-  price_offer?: number;
   estimated_arrival_minutes?: number;
   message?: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'pending' | 'accepted' | 'rejected' | 'expired' | 'countered';
   created_at: string;
   expires_at?: string;
 }
@@ -106,6 +108,7 @@ export interface AppSettings {
   subscription_period_days?: number;
   enable_free_driver_access: boolean;
   default_free_days?: number;
+  driver_offer_countries?: string[] | null;
   paypal_client_id?: string;
   paypal_secret?: string;
   payment_gateway?: string;

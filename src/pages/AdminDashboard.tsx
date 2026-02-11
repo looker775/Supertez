@@ -113,6 +113,7 @@ export default function AdminDashboard() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [settings, setSettings] = useState<any>({});
+  const [offerCountriesInput, setOfferCountriesInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -128,6 +129,23 @@ export default function AdminDashboard() {
   const [supportStatusFilter, setSupportStatusFilter] = useState('all');
   const [supportLoading, setSupportLoading] = useState(false);
   const [crmSearch, setCrmSearch] = useState('');
+
+  const formatOfferCountries = (value: any) => {
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    return '';
+  };
+
+  const parseOfferCountries = (value: string) => {
+    return value
+      .split(/[,\n]/)
+      .map((entry) => entry.trim().toUpperCase())
+      .filter(Boolean);
+  };
   const [verificationRequests, setVerificationRequests] = useState<DriverVerification[]>([]);
   const [verificationStatusFilter, setVerificationStatusFilter] = useState('pending');
   const [verificationSearch, setVerificationSearch] = useState('');
@@ -301,7 +319,10 @@ export default function AdminDashboard() {
       setProfile(userProfile);
 
       const { data: settingsData } = await supabase.from('app_settings').select('*').single();
-      if (settingsData) setSettings(settingsData);
+      if (settingsData) {
+        setSettings(settingsData);
+        setOfferCountriesInput(formatOfferCountries(settingsData.driver_offer_countries));
+      }
 
       await Promise.all([loadRides(), loadDrivers(), loadSupportThreads(), loadVerifications(), loadAffiliates()]);
     } catch (err) {
@@ -548,6 +569,7 @@ export default function AdminDashboard() {
         updatePayload.fixed_price_amount = parseFloat(settings.fixed_price_amount);
         updatePayload.price_per_km = parseFloat(settings.price_per_km);
         updatePayload.currency = settings.currency;
+        updatePayload.driver_offer_countries = parseOfferCountries(offerCountriesInput);
       }
       if (canManageSubscriptions) {
         updatePayload.require_driver_subscription = settings.require_driver_subscription;
@@ -1306,6 +1328,22 @@ export default function AdminDashboard() {
                   <option value="EUR">{t('owner.settings.pricing.currency_eur')}</option>
                   <option value="KZT">{t('owner.settings.pricing.currency_kzt')}</option>
                 </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('owner.settings.pricing.offer_countries', { defaultValue: 'Countries with driver price offers' })}
+                </label>
+                <input
+                  value={offerCountriesInput}
+                  onChange={(e) => setOfferCountriesInput(e.target.value)}
+                  disabled={!canEditPricing}
+                  placeholder={t('owner.settings.pricing.offer_countries_hint', { defaultValue: 'Example: KZ, RU, US' })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('owner.settings.pricing.offer_countries_help', { defaultValue: 'Drivers will propose prices for rides created in these countries (ISO codes, comma separated).' })}
+                </p>
               </div>
 
               {settings.pricing_mode === 'fixed' ? (

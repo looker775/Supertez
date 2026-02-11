@@ -68,12 +68,30 @@ export default function OwnerDashboard() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<any>({});
+  const [offerCountriesInput, setOfferCountriesInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [freeDaysInput, setFreeDaysInput] = useState('');
   const [message, setMessage] = useState('');
+
+  const formatOfferCountries = (value: any) => {
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    return '';
+  };
+
+  const parseOfferCountries = (value: string) => {
+    return value
+      .split(/[,\n]/)
+      .map((entry) => entry.trim().toUpperCase())
+      .filter(Boolean);
+  };
 
   useEffect(() => {
     loadData();
@@ -87,7 +105,10 @@ export default function OwnerDashboard() {
 
       // Load settings
       const { data: settingsData } = await supabase.from('app_settings').select('*').single();
-      if (settingsData) setSettings(settingsData);
+      if (settingsData) {
+        setSettings(settingsData);
+        setOfferCountriesInput(formatOfferCountries(settingsData.driver_offer_countries));
+      }
 
       // Load stats
       await loadStats();
@@ -219,6 +240,7 @@ export default function OwnerDashboard() {
           enable_free_driver_access: settings.enable_free_driver_access,
           default_free_days: parseInt(settings.default_free_days),
           paypal_client_id: settings.paypal_client_id,
+          driver_offer_countries: parseOfferCountries(offerCountriesInput),
         })
         .eq('id', 1);
 
@@ -592,6 +614,21 @@ export default function OwnerDashboard() {
                   <option value="EUR">{t('owner.settings.pricing.currency_eur')}</option>
                   <option value="KZT">{t('owner.settings.pricing.currency_kzt')}</option>
                 </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('owner.settings.pricing.offer_countries', { defaultValue: 'Countries with driver price offers' })}
+                </label>
+                <input
+                  value={offerCountriesInput}
+                  onChange={(e) => setOfferCountriesInput(e.target.value)}
+                  placeholder={t('owner.settings.pricing.offer_countries_hint', { defaultValue: 'Example: KZ, RU, US' })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('owner.settings.pricing.offer_countries_help', { defaultValue: 'Drivers will propose prices for rides created in these countries (ISO codes, comma separated).' })}
+                </p>
               </div>
 
               {settings.pricing_mode === 'fixed' ? (
