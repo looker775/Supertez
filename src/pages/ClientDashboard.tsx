@@ -1818,7 +1818,7 @@ export default function ClientDashboard() {
                             <p className="text-xs text-orange-600 mt-1">
                               {t('client.offers.counter_sent', { defaultValue: 'Counter sent' })}:{' '}
                               {offerLocal !== null
-                                ? formatCurrency(roundAmount(counterPrice * localRate, localCurrency as string), localCurrency as string)
+                                ? formatCurrency(roundAmount(counterPrice * (localRate || 1), localCurrency as string), localCurrency as string)
                                 : formatCurrency(counterPrice, offerBaseCurrency)}
                             </p>
                           )}
