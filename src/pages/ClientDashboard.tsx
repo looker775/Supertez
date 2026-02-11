@@ -1115,7 +1115,10 @@ export default function ClientDashboard() {
     if (!activeRide || !currentUserId) return;
     const value = clientOfferInput.trim();
     const parsed = value ? Number(value) : null;
-    const offerPrice = parsed && parsed > 0 ? parsed : null;
+    let offerPrice = parsed && parsed > 0 ? parsed : null;
+    if (offerPrice && localCurrency && localRate) {
+      offerPrice = offerPrice / localRate;
+    }
     setOfferLoading(true);
     try {
       const { data, error } = await supabase
@@ -1472,7 +1475,10 @@ export default function ClientDashboard() {
       const allowDriverOffers = resolvedCountry ? offerCountries.includes(resolvedCountry) : false;
 
       const parsedClientOffer = clientOfferInput.trim() ? Number(clientOfferInput) : null;
-      const clientOfferPrice = parsedClientOffer && parsedClientOffer > 0 ? parsedClientOffer : null;
+      let clientOfferPrice = parsedClientOffer && parsedClientOffer > 0 ? parsedClientOffer : null;
+      if (clientOfferPrice && localCurrency && localRate) {
+        clientOfferPrice = clientOfferPrice / localRate;
+      }
 
       const { data, error: insertError } = await supabase
         .from('rides')
@@ -1574,7 +1580,7 @@ export default function ClientDashboard() {
     const ridePrice = Number(activeRide.final_price ?? activeRide.base_price ?? 0);
     const isOfferRide = activeRide.allow_driver_offers === true || activeRide.final_price === null;
     const priceLabel = isOfferRide && activeRide.status === 'pending'
-      ? t('client.active.estimated_price', { defaultValue: 'Estimated price' })
+      ? ''
       : t('client.active.price');
     const driverSpeed = activeRide.driver_speed_kmh ? Math.round(activeRide.driver_speed_kmh) : null;
     const driverHeading = activeRide.driver_heading !== null && activeRide.driver_heading !== undefined
@@ -1705,7 +1711,9 @@ export default function ClientDashboard() {
 
           <div className="flex justify-between items-center pt-4 border-t">
             <div>
-              <p className="text-sm text-gray-500">{priceLabel}</p>
+              {priceLabel && (
+                <p className="text-sm text-gray-500">{priceLabel}</p>
+              )}
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                   {formatCurrency(
@@ -1762,6 +1770,9 @@ export default function ClientDashboard() {
                   placeholder={t('client.offers.your_price_placeholder', { defaultValue: 'Enter your price' })}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 />
+                <span className="text-xs text-gray-500">
+                  {localCurrency || settings?.currency || DEFAULT_SETTINGS.currency || 'USD'}
+                </span>
                 <button
                   onClick={updateClientOfferPrice}
                   disabled={offerLoading}
@@ -1780,6 +1791,10 @@ export default function ClientDashboard() {
               <div className="space-y-3">
                 {rideOffers.map((offer) => {
                   const offerPrice = Number(offer.price_offer ?? 0);
+                  const offerBaseCurrency = (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase();
+                  const offerLocal = localCurrency && localRate
+                    ? roundAmount(offerPrice * localRate, localCurrency)
+                    : null;
                   const counterPrice = offer.client_counter_price ?? null;
                   return (
                     <div key={offer.id} className="border rounded-lg p-4 flex flex-col gap-3">
@@ -1790,20 +1805,21 @@ export default function ClientDashboard() {
                           </p>
                           <p className="text-sm text-gray-500">
                             {t('client.offers.offer_price', { defaultValue: 'Offer' })}:{' '}
-                            {formatCurrency(
-                              offerPrice,
-                              (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
-                            )}
+                            {offerLocal !== null
+                              ? formatCurrency(offerLocal, localCurrency as string)
+                              : formatCurrency(offerPrice, offerBaseCurrency)}
                           </p>
-                          {localCurrency && localRate && (
-                            <p className="text-sm text-gray-800">
-                              ≈ {formatCurrency(roundAmount(offerPrice * localRate, localCurrency), localCurrency)}
+                          {offerLocal !== null && (
+                            <p className="text-xs text-gray-400">
+                              {formatCurrency(offerPrice, offerBaseCurrency)}
                             </p>
                           )}
                           {counterPrice && (
                             <p className="text-xs text-orange-600 mt-1">
                               {t('client.offers.counter_sent', { defaultValue: 'Counter sent' })}:{' '}
-                              {formatCurrency(counterPrice, (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase())}
+                              {offerLocal !== null
+                                ? formatCurrency(roundAmount(counterPrice * localRate, localCurrency as string), localCurrency as string)
+                                : formatCurrency(counterPrice, offerBaseCurrency)}
                             </p>
                           )}
                         </div>
@@ -2334,20 +2350,32 @@ export default function ClientDashboard() {
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <p className="text-sm text-gray-500">{t('client.price.estimated')}</p>
+                {!isOfferMode && (
+                  <p className="text-sm text-gray-500">{t('client.price.estimated')}</p>
+                )}
                 {pickup && dropoff ? (
                   <div>
-                    <p className="text-lg font-semibold text-gray-700">
-                      {formatCurrency(
-                        calculatePrice(),
-                        (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
-                      )}
-                    </p>
-                    {localCurrency && localRate && (
-                      <p className="text-4xl font-bold text-slate-900">
-                        ≈ {formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
+                    {!isOfferMode && (
+                      <p className="text-lg font-semibold text-gray-700">
+                        {formatCurrency(
+                          calculatePrice(),
+                          (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                        )}
                       </p>
                     )}
+                {localCurrency && localRate && (
+                  <p className="text-4xl font-bold text-slate-900">
+                        {isOfferMode ? '' : '≈ '}{formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
+                  </p>
+                )}
+                {isOfferMode && (!localCurrency || !localRate) && (
+                  <p className="text-lg font-semibold text-gray-700">
+                    {formatCurrency(
+                      calculatePrice(),
+                      (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                    )}
+                  </p>
+                )}
                   </div>
                 ) : (
                   <p className="text-3xl font-bold text-gray-400">--</p>
@@ -2378,7 +2406,7 @@ export default function ClientDashboard() {
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   />
                   <span className="text-xs text-gray-500">
-                    {settings?.currency || DEFAULT_SETTINGS.currency || 'USD'}
+                    {localCurrency || settings?.currency || DEFAULT_SETTINGS.currency || 'USD'}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500">

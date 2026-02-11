@@ -188,6 +188,8 @@ export default function DriverDashboard() {
   const hasLoadedRidesRef = useRef(false);
   const [displayCurrency, setDisplayCurrency] = useState('USD');
   const [displayPrice, setDisplayPrice] = useState(2);
+  const [rideLocalCurrency, setRideLocalCurrency] = useState<string | null>(null);
+  const [rideLocalRate, setRideLocalRate] = useState<number | null>(null);
   
   // UI State
   const [loading, setLoading] = useState(true);
@@ -228,6 +230,42 @@ export default function DriverDashboard() {
     };
 
     updatePrice();
+    return () => {
+      active = false;
+    };
+  }, [settings, driverLocation?.countryCode]);
+
+  useEffect(() => {
+    if (!settings) return;
+    let active = true;
+
+    const updateRideCurrency = async () => {
+      const baseCurrencyRaw = settings.currency || 'USD';
+      const baseCurrency = typeof baseCurrencyRaw === 'string' ? baseCurrencyRaw.toUpperCase() : 'USD';
+      let countryCode = driverLocation?.countryCode;
+      if (!countryCode) {
+        const ipLocation = await detectLocationFromIp();
+        countryCode = ipLocation?.countryCode;
+      }
+      if (!countryCode) {
+        setRideLocalCurrency(null);
+        setRideLocalRate(null);
+        return;
+      }
+
+      const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
+      const rate = await getExchangeRate(baseCurrency, resolved.currency);
+      if (!active) return;
+      if (!rate || resolved.currency.toUpperCase() === baseCurrency) {
+        setRideLocalCurrency(null);
+        setRideLocalRate(null);
+        return;
+      }
+      setRideLocalCurrency(resolved.currency.toUpperCase());
+      setRideLocalRate(rate);
+    };
+
+    updateRideCurrency();
     return () => {
       active = false;
     };
@@ -963,10 +1001,13 @@ export default function DriverDashboard() {
   const sendOffer = async (ride: Ride) => {
     if (!profile?.id) return;
     const raw = offerInputs[ride.id];
-    const price = Number(raw);
+    let price = Number(raw);
     if (!price || price <= 0) {
       setError(t('driver.errors.invalid_price', { defaultValue: 'Enter a valid price.' }));
       return;
+    }
+    if (rideLocalCurrency && rideLocalRate) {
+      price = price / rideLocalRate;
     }
 
     setLoading(true);
@@ -1640,7 +1681,9 @@ export default function DriverDashboard() {
                     <p className="font-semibold">
                       {offerMode
                         ? t('driver.available.offer_required', { defaultValue: 'Offer required' })
-                        : `$${ride.final_price ?? ride.base_price}`}
+                        : rideLocalCurrency && rideLocalRate
+                          ? formatCurrency(roundAmount(Number(ride.final_price ?? ride.base_price) * rideLocalRate, rideLocalCurrency), rideLocalCurrency)
+                          : formatCurrency(Number(ride.final_price ?? ride.base_price), (settings?.currency || 'USD').toUpperCase())}
                     </p>
                     <p className="text-sm">{ride.pickup_address}</p>
                     {!offerMode && (
@@ -1702,19 +1745,17 @@ export default function DriverDashboard() {
                           {ride.client_offer_price && (
                             <p className="text-sm text-gray-600">
                               {t('driver.available.client_offer', { defaultValue: 'Client offer' })}:{' '}
-                              {formatCurrency(
-                                Number(ride.client_offer_price),
-                                (settings?.currency || 'USD').toUpperCase()
-                              )}
+                              {rideLocalCurrency && rideLocalRate
+                                ? formatCurrency(roundAmount(Number(ride.client_offer_price) * rideLocalRate, rideLocalCurrency), rideLocalCurrency)
+                                : formatCurrency(Number(ride.client_offer_price), (settings?.currency || 'USD').toUpperCase())}
                             </p>
                           )}
                           {offer?.price_offer && (
                             <p className="text-sm text-gray-500">
                               {t('driver.available.your_offer', { defaultValue: 'Your offer' })}:{' '}
-                              {formatCurrency(
-                                Number(offer.price_offer),
-                                (settings?.currency || 'USD').toUpperCase()
-                              )}
+                              {rideLocalCurrency && rideLocalRate
+                                ? formatCurrency(roundAmount(Number(offer.price_offer) * rideLocalRate, rideLocalCurrency), rideLocalCurrency)
+                                : formatCurrency(Number(offer.price_offer), (settings?.currency || 'USD').toUpperCase())}
                             </p>
                           )}
                           {hasCounter && (
@@ -1728,9 +1769,22 @@ export default function DriverDashboard() {
                           )}
                         </>
                       ) : (
-                        <p className="text-2xl font-bold text-gray-900">
-                          ${ride.final_price ?? ride.base_price}
-                        </p>
+                        <div>
+                          {rideLocalCurrency && rideLocalRate ? (
+                            <>
+                              <p className="text-2xl font-bold text-gray-900">
+                                {formatCurrency(roundAmount(Number(ride.final_price ?? ride.base_price) * rideLocalRate, rideLocalCurrency), rideLocalCurrency)}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {formatCurrency(Number(ride.final_price ?? ride.base_price), (settings?.currency || 'USD').toUpperCase())}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-2xl font-bold text-gray-900">
+                              {formatCurrency(Number(ride.final_price ?? ride.base_price), (settings?.currency || 'USD').toUpperCase())}
+                            </p>
+                          )}
+                        </div>
                       )}
                       <p className="text-sm text-gray-500">{getRelativeTime(ride.created_at)}</p>
                     </div>
@@ -1785,6 +1839,9 @@ export default function DriverDashboard() {
                               placeholder={t('driver.available.offer_placeholder', { defaultValue: 'Your price' })}
                               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
                             />
+                            <span className="text-xs text-gray-500">
+                              {rideLocalCurrency || settings?.currency || 'USD'}
+                            </span>
                             <button
                               onClick={() => sendOffer(ride)}
                               className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
