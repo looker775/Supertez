@@ -406,9 +406,15 @@ export default function ClientDashboard() {
   useEffect(() => {
     if (!activeRide?.id) return;
     if (activeRide.client_offer_price !== null && activeRide.client_offer_price !== undefined) {
-      setClientOfferInput(String(activeRide.client_offer_price));
+      const baseValue = Number(activeRide.client_offer_price);
+      const displayValue = localCurrency && localRate
+        ? roundAmount(baseValue * localRate, localCurrency)
+        : baseValue;
+      setClientOfferInput(String(displayValue));
+      return;
     }
-  }, [activeRide?.id, activeRide?.client_offer_price]);
+    setClientOfferInput('');
+  }, [activeRide?.id, activeRide?.client_offer_price, localCurrency, localRate]);
 
   const showStatusNotification = useCallback((message: string) => {
     const title = t('client.notifications.title', { defaultValue: 'Ride Update' });
@@ -1082,7 +1088,10 @@ export default function ClientDashboard() {
   const counterOffer = async (offer: RideOffer) => {
     if (!activeRide) return;
     const input = counterPrices[offer.id];
-    const counterPrice = Number(input);
+    let counterPrice = Number(input);
+    if (counterPrice && localCurrency && localRate) {
+      counterPrice = counterPrice / localRate;
+    }
     if (!counterPrice || counterPrice <= 0) {
       setError(t('client.errors.invalid_price', { defaultValue: 'Enter a valid price.' }));
       return;
@@ -1579,9 +1588,8 @@ export default function ClientDashboard() {
       : null;
     const ridePrice = Number(activeRide.final_price ?? activeRide.base_price ?? 0);
     const isOfferRide = activeRide.allow_driver_offers === true || activeRide.final_price === null;
-    const priceLabel = isOfferRide && activeRide.status === 'pending'
-      ? ''
-      : t('client.active.price');
+    const showPriceBlock = !(isOfferRide && activeRide.status === 'pending');
+    const priceLabel = showPriceBlock ? t('client.active.price') : '';
     const driverSpeed = activeRide.driver_speed_kmh ? Math.round(activeRide.driver_speed_kmh) : null;
     const driverHeading = activeRide.driver_heading !== null && activeRide.driver_heading !== undefined
       ? Math.round(activeRide.driver_heading)
@@ -1709,7 +1717,8 @@ export default function ClientDashboard() {
             </div>
           </div>
 
-          <div className="flex justify-between items-center pt-4 border-t">
+          {showPriceBlock && (
+            <div className="flex justify-between items-center pt-4 border-t">
             <div>
               {priceLabel && (
                 <p className="text-sm text-gray-500">{priceLabel}</p>
@@ -1735,7 +1744,8 @@ export default function ClientDashboard() {
               <p className="text-sm text-gray-500">{t('client.active.payment')}</p>
               <p className="font-medium capitalize">{t(`payment.${activeRide.payment_method || 'cash'}`, { defaultValue: activeRide.payment_method || 'cash' })}</p>
             </div>
-          </div>
+            </div>
+          )}
         </div>
 
         {activeRide.status === 'pending' && (activeRide.allow_driver_offers || activeRide.final_price === null) && (

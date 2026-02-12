@@ -1424,7 +1424,39 @@ export default function DriverDashboard() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-500">{t('driver.active.earnings')}</p>
-                <p className="text-2xl font-bold text-green-600">${activeRide.final_price}</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {rideLocalCurrency && rideLocalRate
+                    ? formatCurrency(
+                        roundAmount(Number(activeRide.final_price ?? 0) * rideLocalRate, rideLocalCurrency),
+                        rideLocalCurrency
+                      )
+                    : formatCurrency(
+                        Number(activeRide.final_price ?? 0),
+                        (settings?.currency || 'USD').toUpperCase()
+                      )}
+                </p>
+                {rideLocalCurrency && rideLocalRate && (
+                  <p className="text-xs text-gray-400">
+                    {formatCurrency(
+                      Number(activeRide.final_price ?? 0),
+                      (settings?.currency || 'USD').toUpperCase()
+                    )}
+                  </p>
+                )}
+                {activeRide.client_offer_price && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {t('driver.available.client_offer', { defaultValue: 'Client offer' })}:{' '}
+                    {rideLocalCurrency && rideLocalRate
+                      ? formatCurrency(
+                          roundAmount(Number(activeRide.client_offer_price) * rideLocalRate, rideLocalCurrency),
+                          rideLocalCurrency
+                        )
+                      : formatCurrency(
+                          Number(activeRide.client_offer_price),
+                          (settings?.currency || 'USD').toUpperCase()
+                        )}
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-3 mb-6">
