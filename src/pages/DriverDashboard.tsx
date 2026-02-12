@@ -5,6 +5,7 @@ import { supabase, getUserProfile, Profile } from '../lib/supabase';
 import { setLanguageByCountry } from '../i18n';
 import {
   detectLocationFromIp,
+  geocodeCityCenter,
   readLocationOverride,
   writeLocationOverride,
 } from '../lib/geo';
@@ -242,7 +243,18 @@ export default function DriverDashboard() {
     const updateRideCurrency = async () => {
       const baseCurrencyRaw = settings.currency || 'USD';
       const baseCurrency = typeof baseCurrencyRaw === 'string' ? baseCurrencyRaw.toUpperCase() : 'USD';
-      let countryCode = driverLocation?.countryCode;
+      const rideCity = activeRide?.pickup_city || availableRides[0]?.pickup_city;
+
+      let countryCode: string | undefined;
+
+      if (rideCity) {
+        const rideGeo = await geocodeCityCenter(rideCity);
+        countryCode = rideGeo?.countryCode;
+      }
+
+      if (!countryCode) {
+        countryCode = driverLocation?.countryCode;
+      }
       if (!countryCode) {
         const ipLocation = await detectLocationFromIp();
         countryCode = ipLocation?.countryCode;
@@ -269,7 +281,7 @@ export default function DriverDashboard() {
     return () => {
       active = false;
     };
-  }, [settings, driverLocation?.countryCode]);
+  }, [settings, driverLocation?.countryCode, activeRide?.pickup_city, availableRides]);
 
   const playNotificationSound = useCallback(() => {
     try {
