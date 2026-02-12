@@ -1776,32 +1776,6 @@ export default function ClientDashboard() {
               </button>
             </div>
 
-            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
-              <div className="text-sm font-medium text-gray-700">
-                {t('client.offers.your_price', { defaultValue: 'Your price offer' })}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={clientOfferInput}
-                  onChange={(e) => setClientOfferInput(e.target.value)}
-                  placeholder={t('client.offers.your_price_placeholder', { defaultValue: 'Enter your price' })}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-                <span className="text-xs text-gray-500">
-                  {localCurrency || settings?.currency || DEFAULT_SETTINGS.currency || 'USD'}
-                </span>
-                <button
-                  onClick={updateClientOfferPrice}
-                  disabled={offerLoading}
-                  className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {t('client.offers.save', { defaultValue: 'Save' })}
-                </button>
-              </div>
-            </div>
-
             {rideOffers.length === 0 ? (
               <div className="bg-gray-50 border border-gray-200 text-gray-600 rounded-lg p-4 text-sm">
                 {t('client.offers.none', { defaultValue: 'Waiting for driver offers...' })}
@@ -1885,6 +1859,32 @@ export default function ClientDashboard() {
                 })}
               </div>
             )}
+
+            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+              <div className="text-sm font-medium text-gray-700">
+                {t('client.offers.your_price', { defaultValue: 'Your price offer' })}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={clientOfferInput}
+                  onChange={(e) => setClientOfferInput(e.target.value)}
+                  placeholder={t('client.offers.your_price_placeholder', { defaultValue: 'Enter your price' })}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <span className="text-xs text-gray-500">
+                  {localCurrency || settings?.currency || DEFAULT_SETTINGS.currency || 'USD'}
+                </span>
+                <button
+                  onClick={updateClientOfferPrice}
+                  disabled={offerLoading}
+                  className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {t('client.offers.save', { defaultValue: 'Save' })}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
