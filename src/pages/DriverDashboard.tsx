@@ -270,14 +270,20 @@ export default function DriverDashboard() {
       }
 
       const resolved = await resolveCurrencyForCountry(countryCode, baseCurrency);
-      const rate = await getExchangeRate(baseCurrency, resolved.currency);
-      if (!active) return;
-      if (!rate || resolved.currency.toUpperCase() === baseCurrency) {
+      const rawCurrency = resolved.raw ? resolved.raw.toUpperCase() : undefined;
+      if (!rawCurrency || rawCurrency === baseCurrency) {
         setRideLocalCurrency(null);
         setRideLocalRate(null);
         return;
       }
-      setRideLocalCurrency(resolved.currency.toUpperCase());
+      const rate = await getExchangeRate(baseCurrency, rawCurrency);
+      if (!active) return;
+      if (!rate) {
+        setRideLocalCurrency(null);
+        setRideLocalRate(null);
+        return;
+      }
+      setRideLocalCurrency(rawCurrency);
       setRideLocalRate(rate);
     };
 
