@@ -1789,8 +1789,10 @@ export default function ClientDashboard() {
                     ? roundAmount(offerPrice * localRate, localCurrency)
                     : null;
                   const counterPrice = offer.client_counter_price ?? null;
+                  const statusKey = (offer.status || 'pending').toLowerCase();
+                  const statusLabel = t(`client.offers.status_${statusKey}`, { defaultValue: statusKey });
                   return (
-                    <div key={offer.id} className="border rounded-lg p-4 flex flex-col gap-3">
+                    <div key={offer.id} className="border rounded-xl p-5 flex flex-col gap-3">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold text-gray-900">
@@ -1799,7 +1801,7 @@ export default function ClientDashboard() {
                           <p className="text-xs uppercase tracking-wide text-gray-400">
                             {t('client.offers.offer_price', { defaultValue: 'Offer' })}
                           </p>
-                          <p className="text-xl font-bold text-blue-600">
+                          <p className="text-2xl font-bold text-blue-600">
                             {offerLocal !== null
                               ? formatCurrency(offerLocal, localCurrency as string)
                               : formatCurrency(offerPrice, offerBaseCurrency)}
@@ -1819,7 +1821,7 @@ export default function ClientDashboard() {
                           )}
                         </div>
                         <span className="text-xs uppercase tracking-wide text-gray-400">
-                          {offer.status || 'pending'}
+                          {statusLabel}
                         </span>
                       </div>
 
@@ -1827,14 +1829,14 @@ export default function ClientDashboard() {
                         <button
                           onClick={() => acceptOffer(offer)}
                           disabled={offerLoading}
-                          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60"
+                          className="px-4 py-3 rounded-lg bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 disabled:opacity-60"
                         >
                           {t('client.offers.accept', { defaultValue: 'Accept' })}
                         </button>
                         <button
                           onClick={() => rejectOffer(offer.id)}
                           disabled={offerLoading}
-                          className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 disabled:opacity-60"
+                          className="px-4 py-3 rounded-lg bg-gray-100 text-gray-700 text-base font-semibold hover:bg-gray-200 disabled:opacity-60"
                         >
                           {t('client.offers.reject', { defaultValue: 'Reject' })}
                         </button>
@@ -1850,7 +1852,7 @@ export default function ClientDashboard() {
                           <button
                             onClick={() => counterOffer(offer)}
                             disabled={offerLoading}
-                            className="px-3 py-2 rounded-lg border border-blue-200 text-blue-700 text-sm font-semibold hover:bg-blue-50 disabled:opacity-60"
+                            className="px-4 py-3 rounded-lg border border-blue-200 text-blue-700 text-base font-semibold hover:bg-blue-50 disabled:opacity-60"
                           >
                             {t('client.offers.counter', { defaultValue: 'Counter' })}
                           </button>

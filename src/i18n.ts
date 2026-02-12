@@ -750,6 +750,27 @@ i18n
               distance: 'Distance',
               creating: 'Creating request...',
               request: 'Request Ride'
+            },
+            offers: {
+              title: 'Driver offers',
+              subtitle: 'Review offers or send a counter price.',
+              your_price: 'Your price offer',
+              your_price_placeholder: 'Enter your price',
+              your_price_hint: 'Drivers will respond with their offers. You can accept or counter.',
+              save: 'Save',
+              none: 'Waiting for driver offers...',
+              driver: 'Driver offer',
+              offer_price: 'Offer',
+              counter_sent: 'Counter sent',
+              accept: 'Accept',
+              reject: 'Reject',
+              counter: 'Counter',
+              counter_placeholder: 'Your price',
+              client_offer_saved: 'Your offer was saved.',
+              status_pending: 'pending',
+              status_accepted: 'accepted',
+              status_rejected: 'rejected',
+              status_countered: 'countered'
             }
           },
           driver: {
@@ -1526,6 +1547,27 @@ i18n
               distance: 'Расстояние',
               creating: 'Создаём заявку...',
               request: 'Заказать поездку'
+            },
+            offers: {
+              title: 'Предложения водителей',
+              subtitle: 'Просмотрите предложения или отправьте встречную цену.',
+              your_price: 'Ваша цена',
+              your_price_placeholder: 'Введите вашу цену',
+              your_price_hint: 'Водители ответят своими предложениями. Вы можете принять или предложить свою цену.',
+              save: 'Сохранить',
+              none: 'Ожидаем предложения водителей...',
+              driver: 'Предложение водителя',
+              offer_price: 'Предложение',
+              counter_sent: 'Отправлено',
+              accept: 'Принять',
+              reject: 'Отклонить',
+              counter: 'Встречная цена',
+              counter_placeholder: 'Ваша цена',
+              client_offer_saved: 'Ваше предложение сохранено.',
+              status_pending: 'в ожидании',
+              status_accepted: 'принято',
+              status_rejected: 'отклонено',
+              status_countered: 'встречное'
             }
           },
           driver: {
