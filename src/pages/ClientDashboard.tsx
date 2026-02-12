@@ -1796,8 +1796,10 @@ export default function ClientDashboard() {
                           <p className="font-semibold text-gray-900">
                             {offer.driver_name || t('client.offers.driver', { defaultValue: 'Driver offer' })}
                           </p>
-                          <p className="text-sm text-gray-500">
-                            {t('client.offers.offer_price', { defaultValue: 'Offer' })}:{' '}
+                          <p className="text-xs uppercase tracking-wide text-gray-400">
+                            {t('client.offers.offer_price', { defaultValue: 'Offer' })}
+                          </p>
+                          <p className="text-xl font-bold text-blue-600">
                             {offerLocal !== null
                               ? formatCurrency(offerLocal, localCurrency as string)
                               : formatCurrency(offerPrice, offerBaseCurrency)}
