@@ -32,6 +32,7 @@ interface Ride {
   pickup_lng: number;
   pickup_address: string;
   pickup_city: string;
+  pickup_country_code?: string | null;
   drop_lat: number;
   drop_lng: number;
   drop_address: string;
@@ -244,10 +245,13 @@ export default function DriverDashboard() {
       const baseCurrencyRaw = settings.currency || 'USD';
       const baseCurrency = typeof baseCurrencyRaw === 'string' ? baseCurrencyRaw.toUpperCase() : 'USD';
       const rideCity = activeRide?.pickup_city || availableRides[0]?.pickup_city;
+      const rideCountryCode = activeRide?.pickup_country_code || availableRides[0]?.pickup_country_code;
 
       let countryCode: string | undefined;
 
-      if (rideCity) {
+      if (rideCountryCode) {
+        countryCode = rideCountryCode;
+      } else if (rideCity) {
         const rideGeo = await geocodeCityCenter(rideCity);
         countryCode = rideGeo?.countryCode;
       }

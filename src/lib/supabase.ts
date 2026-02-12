@@ -37,10 +37,12 @@ export interface Ride {
   pickup_lng: number;
   pickup_address: string;
   pickup_city?: string;
+  pickup_country_code?: string | null;
   drop_lat: number;
   drop_lng: number;
   drop_address: string;
   drop_city?: string;
+  drop_country_code?: string | null;
   distance_km?: number;
   estimated_time_minutes?: number;
   passengers: number;

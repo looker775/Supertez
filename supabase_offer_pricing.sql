@@ -7,7 +7,9 @@ ALTER TABLE public.rides
   ADD COLUMN IF NOT EXISTS allow_driver_offers boolean DEFAULT false;
 
 ALTER TABLE public.rides
-  ADD COLUMN IF NOT EXISTS client_offer_price numeric;
+  ADD COLUMN IF NOT EXISTS client_offer_price numeric,
+  ADD COLUMN IF NOT EXISTS pickup_country_code text,
+  ADD COLUMN IF NOT EXISTS drop_country_code text;
 
 -- Expand ride_offers to support negotiation
 ALTER TABLE public.ride_offers

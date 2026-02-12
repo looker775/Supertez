@@ -98,8 +98,12 @@ interface Ride {
   driver_heading?: number | null;
   pickup_lat: number;
   pickup_lng: number;
+  pickup_city?: string;
+  pickup_country_code?: string | null;
   drop_lat: number;
   drop_lng: number;
+  drop_city?: string;
+  drop_country_code?: string | null;
   payment_method?: string;
 }
 
@@ -1483,6 +1487,9 @@ export default function ClientDashboard() {
       }
       const allowDriverOffers = resolvedCountry ? offerCountries.includes(resolvedCountry) : false;
 
+      const pickupCountryCode = (pickup.countryCode || resolvedCountry || profileCountry || countryCode || '').toUpperCase() || null;
+      const dropCountryCode = (dropoff.countryCode || pickupCountryCode || resolvedCountry || profileCountry || countryCode || '').toUpperCase() || null;
+
       const parsedClientOffer = clientOfferInput.trim() ? Number(clientOfferInput) : null;
       let clientOfferPrice = parsedClientOffer && parsedClientOffer > 0 ? parsedClientOffer : null;
       if (clientOfferPrice && localCurrency && localRate) {
@@ -1497,10 +1504,12 @@ export default function ClientDashboard() {
           pickup_lng: pickup.lng,
           pickup_address: pickup.address,
           pickup_city: pickup.city,
+          pickup_country_code: pickupCountryCode,
           drop_lat: dropoff.lat,
           drop_lng: dropoff.lng,
           drop_address: dropoff.address,
           drop_city: dropoff.city,
+          drop_country_code: dropCountryCode,
           distance_km: Math.round(distance * 100) / 100,
           passengers: passengers,
           base_price: price,
