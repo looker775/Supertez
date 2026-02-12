@@ -2351,34 +2351,26 @@ export default function ClientDashboard() {
             <div className="flex justify-between items-center mb-4">
               <div>
                 {!isOfferMode && (
-                  <p className="text-sm text-gray-500">{t('client.price.estimated')}</p>
-                )}
-                {pickup && dropoff ? (
-                  <div>
-                    {!isOfferMode && (
-                      <p className="text-lg font-semibold text-gray-700">
-                        {formatCurrency(
-                          calculatePrice(),
-                          (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                  <>
+                    <p className="text-sm text-gray-500">{t('client.price.estimated')}</p>
+                    {pickup && dropoff ? (
+                      <div>
+                        <p className="text-lg font-semibold text-gray-700">
+                          {formatCurrency(
+                            calculatePrice(),
+                            (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
+                          )}
+                        </p>
+                        {localCurrency && localRate && (
+                          <p className="text-4xl font-bold text-slate-900">
+                            ≈ {formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
+                          </p>
                         )}
-                      </p>
+                      </div>
+                    ) : (
+                      <p className="text-3xl font-bold text-gray-400">--</p>
                     )}
-                {localCurrency && localRate && (
-                  <p className="text-4xl font-bold text-slate-900">
-                        {isOfferMode ? '' : '≈ '}{formatCurrency(roundAmount(calculatePrice() * localRate, localCurrency), localCurrency)}
-                  </p>
-                )}
-                {isOfferMode && (!localCurrency || !localRate) && (
-                  <p className="text-lg font-semibold text-gray-700">
-                    {formatCurrency(
-                      calculatePrice(),
-                      (settings?.currency || DEFAULT_SETTINGS.currency || 'USD').toUpperCase()
-                    )}
-                  </p>
-                )}
-                  </div>
-                ) : (
-                  <p className="text-3xl font-bold text-gray-400">--</p>
+                  </>
                 )}
               </div>
               {pickup && dropoff && (
