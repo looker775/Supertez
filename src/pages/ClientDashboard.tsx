@@ -1003,7 +1003,14 @@ export default function ClientDashboard() {
       return;
     }
 
-    loadRideOffers(activeRide.id);
+    let cancelled = false;
+    const refresh = () => {
+      if (!cancelled && activeRide?.id) {
+        loadRideOffers(activeRide.id);
+      }
+    };
+
+    refresh();
     const subscription = supabase
       .channel(`ride-offers-${activeRide.id}`)
       .on('postgres_changes', {
@@ -1011,13 +1018,22 @@ export default function ClientDashboard() {
         schema: 'public',
         table: 'ride_offers',
         filter: `ride_id=eq.${activeRide.id}`,
-      }, () => {
-        loadRideOffers(activeRide.id);
-      })
+      }, refresh)
       .subscribe();
 
+    const intervalId = window.setInterval(refresh, 5000);
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
+      cancelled = true;
       subscription.unsubscribe();
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [activeRide?.id, activeRide?.allow_driver_offers, loadRideOffers]);
 
