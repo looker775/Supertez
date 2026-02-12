@@ -1466,18 +1466,22 @@ export default function DriverDashboard() {
                   </p>
                 )}
                 {activeRide.client_offer_price && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {t('driver.available.client_offer', { defaultValue: 'Client offer' })}:{' '}
-                    {rideLocalCurrency && rideLocalRate
-                      ? formatCurrency(
-                          roundAmount(Number(activeRide.client_offer_price) * rideLocalRate, rideLocalCurrency),
-                          rideLocalCurrency
-                        )
-                      : formatCurrency(
-                          Number(activeRide.client_offer_price),
-                          (settings?.currency || 'USD').toUpperCase()
-                        )}
-                  </p>
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500">
+                      {t('driver.available.client_offer', { defaultValue: 'Client offer' })}
+                    </p>
+                    <p className="text-lg font-bold text-blue-600">
+                      {rideLocalCurrency && rideLocalRate
+                        ? formatCurrency(
+                            roundAmount(Number(activeRide.client_offer_price) * rideLocalRate, rideLocalCurrency),
+                            rideLocalCurrency
+                          )
+                        : formatCurrency(
+                            Number(activeRide.client_offer_price),
+                            (settings?.currency || 'USD').toUpperCase()
+                          )}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -1797,12 +1801,16 @@ export default function DriverDashboard() {
                             {t('driver.available.offer_required', { defaultValue: 'Offer required' })}
                           </p>
                           {ride.client_offer_price && (
-                            <p className="text-sm text-gray-600">
-                              {t('driver.available.client_offer', { defaultValue: 'Client offer' })}:{' '}
-                              {rideLocalCurrency && rideLocalRate
-                                ? formatCurrency(roundAmount(Number(ride.client_offer_price) * rideLocalRate, rideLocalCurrency), rideLocalCurrency)
-                                : formatCurrency(Number(ride.client_offer_price), (settings?.currency || 'USD').toUpperCase())}
-                            </p>
+                            <div className="mt-1">
+                              <p className="text-xs uppercase tracking-wide text-gray-500">
+                                {t('driver.available.client_offer', { defaultValue: 'Client offer' })}
+                              </p>
+                              <p className="text-lg font-bold text-blue-600">
+                                {rideLocalCurrency && rideLocalRate
+                                  ? formatCurrency(roundAmount(Number(ride.client_offer_price) * rideLocalRate, rideLocalCurrency), rideLocalCurrency)
+                                  : formatCurrency(Number(ride.client_offer_price), (settings?.currency || 'USD').toUpperCase())}
+                              </p>
+                            </div>
                           )}
                           {offer?.price_offer && (
                             <p className="text-sm text-gray-500">
