@@ -794,6 +794,12 @@ i18n
               ride_already_taken: 'This ride was already accepted by another driver.',
               accept_failed: 'Failed to accept ride'
             },
+            notifications: {
+              new_request_title: 'New ride request',
+              new_request_body: 'You have {{count}} new ride request(s).',
+              counter_title: 'Client counter offer',
+              counter_body: 'A client updated the price offer.'
+            },
             subscription_required: {
               title: 'Subscription Required',
               subtitle: 'You need an active subscription to receive ride requests.',
@@ -1590,6 +1596,12 @@ i18n
               send_message_failed: 'Не удалось отправить сообщение',
               ride_already_taken: 'Эту поездку уже принял другой водитель.',
               accept_failed: 'Не удалось принять поездку'
+            },
+            notifications: {
+              new_request_title: 'Новый заказ',
+              new_request_body: 'У вас {{count}} новых заказ(ов).',
+              counter_title: 'Клиент изменил цену',
+              counter_body: 'Клиент отправил встречную цену.'
             },
             subscription_required: {
               title: 'Требуется подписка',

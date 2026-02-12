@@ -188,6 +188,7 @@ export default function DriverDashboard() {
   const notificationTimerRef = useRef<number | null>(null);
   const prevRideIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedRidesRef = useRef(false);
+  const loadAvailableRidesRef = useRef<((lat?: number, lng?: number, city?: string, fallback?: boolean) => Promise<void>) | null>(null);
   const [displayCurrency, setDisplayCurrency] = useState('USD');
   const [displayPrice, setDisplayPrice] = useState(2);
   const [rideLocalCurrency, setRideLocalCurrency] = useState<string | null>(null);
@@ -335,6 +336,24 @@ export default function DriverDashboard() {
       count,
       defaultValue: 'You have {{count}} new ride request(s).',
     });
+    setRideNotification({ title, message });
+    if (notificationTimerRef.current) {
+      window.clearTimeout(notificationTimerRef.current);
+    }
+    notificationTimerRef.current = window.setTimeout(() => {
+      setRideNotification(null);
+    }, 7000);
+
+    playNotificationSound();
+
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body: message });
+    }
+  }, [playNotificationSound, t]);
+
+  const showOfferNotification = useCallback(() => {
+    const title = t('driver.notifications.counter_title', { defaultValue: 'Client counter offer' });
+    const message = t('driver.notifications.counter_body', { defaultValue: 'A client updated the price offer.' });
     setRideNotification({ title, message });
     if (notificationTimerRef.current) {
       window.clearTimeout(notificationTimerRef.current);
@@ -834,6 +853,7 @@ export default function DriverDashboard() {
       console.error('Error loading rides:', err);
     }
   };
+  loadAvailableRidesRef.current = loadAvailableRides;
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -851,6 +871,33 @@ export default function DriverDashboard() {
       document.removeEventListener('visibilitychange', refreshOnReturn);
     };
   }, [driverLocation?.city, driverLocation?.lat, driverLocation?.lng, loadActiveRide, profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const channel = supabase
+      .channel(`driver-offers-${profile.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'ride_offers',
+        filter: `driver_id=eq.${profile.id}`,
+      }, (payload: any) => {
+        const nextStatus = payload?.new?.status;
+        const prevStatus = payload?.old?.status;
+        if (nextStatus === 'countered' && prevStatus !== 'countered') {
+          showOfferNotification();
+        }
+        if (!activeRide) {
+          loadAvailableRidesRef.current?.(driverLocation?.lat, driverLocation?.lng, driverLocation?.city);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [profile?.id, driverLocation?.city, driverLocation?.lat, driverLocation?.lng, activeRide, showOfferNotification]);
 
   const loadMessages = async (rideId: string) => {
     const { data } = await supabase
