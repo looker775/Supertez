@@ -74,6 +74,9 @@ export default function SubscriptionPage() {
   const [localEquivalent, setLocalEquivalent] = useState<{ currency: string; amount: number } | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(false);
   const emailReceiptsEnabled = import.meta.env.VITE_ENABLE_EMAIL_RECEIPTS === 'true';
+  const isAndroidApp =
+    typeof window !== 'undefined' &&
+    (!!(window as any).ReactNativeWebView || /SupertezApp/i.test(navigator.userAgent || ''));
 
   useEffect(() => {
     loadData();
@@ -195,6 +198,7 @@ export default function SubscriptionPage() {
 
   useEffect(() => {
     if (!paypalConfigured || !displayCurrency) return;
+    if (isAndroidApp) return;
     paypalDispatch({
       type: DISPATCH_ACTION.RESET_OPTIONS,
       value: {
@@ -203,7 +207,7 @@ export default function SubscriptionPage() {
       },
     });
     paypalDispatch({ type: DISPATCH_ACTION.LOADING_STATUS, value: SCRIPT_LOADING_STATE.PENDING });
-  }, [paypalConfigured, displayCurrency, paypalDispatch, paypalClientId, paypalSdkBase, paypalEnvironment]);
+  }, [paypalConfigured, displayCurrency, paypalDispatch, paypalClientId, paypalSdkBase, paypalEnvironment, isAndroidApp]);
 
   const isSubscriptionActive = () => {
     if (!subscription) return false;
@@ -334,6 +338,9 @@ export default function SubscriptionPage() {
           expires_at: expiresAt.toISOString(),
           last_payment_date: new Date().toISOString(),
           last_payment_amount: settings?.driver_subscription_price || 2,
+          payment_method: 'paypal',
+          provider: 'paypal',
+          provider_subscription_id: data.subscriptionID,
           auto_renew: true,
         });
 
@@ -355,6 +362,63 @@ export default function SubscriptionPage() {
   };
   const onCancel = () => {
     setPaypalDebug('Payment cancelled by user.');
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event: MessageEvent) => {
+      let data: any = event.data;
+      try {
+        if (typeof data === 'string') data = JSON.parse(data);
+      } catch {
+        return;
+      }
+      if (data?.type === 'SUBSCRIPTION_UPDATED') {
+        loadData();
+      }
+    };
+    window.addEventListener('message', handler);
+    document.addEventListener('message', handler as any);
+    return () => {
+      window.removeEventListener('message', handler);
+      document.removeEventListener('message', handler as any);
+    };
+  }, []);
+
+  const openGooglePlayBilling = async () => {
+    try {
+      setError('');
+      setSuccess('');
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const userId = session.data.session?.user?.id;
+
+      if (!token || !userId) {
+        setError(t('subscription.errors.load_profile'));
+        return;
+      }
+
+      const bridge = (window as any).ReactNativeWebView;
+      if (!bridge?.postMessage) {
+        setError(t('subscription.errors.payment_failed'));
+        return;
+      }
+
+      bridge.postMessage(
+        JSON.stringify({
+          type: 'OPEN_GOOGLE_SUBSCRIPTION',
+          payload: {
+            accessToken: token,
+            userId,
+          },
+        })
+      );
+
+      setSuccess(t('subscription.messages.open_app', { defaultValue: 'Open the Google Play purchase screen in the app.' }));
+    } catch (err: any) {
+      const message = err?.message || t('subscription.errors.payment_failed');
+      setError(message);
+    }
   };
 
   const requestFreeTrial = async () => {
@@ -542,7 +606,30 @@ export default function SubscriptionPage() {
 
               {/* PayPal Button */}
               <div className="mt-6">
-                {!paypalConfigured && (
+                {isAndroidApp && (
+                  <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg flex items-start space-x-2 mb-4">
+                    <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-medium">
+                        {t('subscription.google_play.title', { defaultValue: 'Google Play subscription' })}
+                      </div>
+                      <div className="text-sm">
+                        {t('subscription.google_play.subtitle', { defaultValue: 'Complete payment with Google Play inside the app.' })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isAndroidApp ? (
+                  <button
+                    onClick={openGooglePlayBilling}
+                    className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                  >
+                    {t('subscription.pay_with_google', { defaultValue: 'Pay with Google Play' })}
+                  </button>
+                ) : null}
+
+                {!paypalConfigured && !isAndroidApp && (
                   <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg text-sm">
                     {t('subscription.errors.paypal_not_configured', {
                       defaultValue: 'PayPal is not configured. Set VITE_PAYPAL_CLIENT_ID in Netlify and redeploy.',
@@ -550,13 +637,15 @@ export default function SubscriptionPage() {
                   </div>
                 )}
 
-                <div className="mt-3 text-[11px] text-gray-500 break-all space-y-1">
-                  <div>PayPal SDK: {paypalSdkBase}</div>
-                  <div>VITE_PAYPAL_ENV: {paypalEnv || 'not set'}</div>
-                  <div>VITE_PAYPAL_CLIENT_ID length: {paypalClientId ? paypalClientId.length : 0}</div>
-                  <div>Detected country: {countryCode || 'unknown'}</div>
-                  <div>Charge currency: {displayCurrency}</div>
-                </div>
+                {!isAndroidApp && (
+                  <div className="mt-3 text-[11px] text-gray-500 break-all space-y-1">
+                    <div>PayPal SDK: {paypalSdkBase}</div>
+                    <div>VITE_PAYPAL_ENV: {paypalEnv || 'not set'}</div>
+                    <div>VITE_PAYPAL_CLIENT_ID length: {paypalClientId ? paypalClientId.length : 0}</div>
+                    <div>Detected country: {countryCode || 'unknown'}</div>
+                    <div>Charge currency: {displayCurrency}</div>
+                  </div>
+                )}
 
                 {currencyLoading && (
                   <div className="mt-3 text-xs text-gray-600">
@@ -570,14 +659,14 @@ export default function SubscriptionPage() {
                   </div>
                 )}
 
-                {paypalConfigured && isPending && (
+                {!isAndroidApp && paypalConfigured && isPending && (
                   <div className="flex items-center justify-center py-4">
                     <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                     <span className="ml-2 text-gray-600">{t('subscription.subscribe.loading_paypal')}</span>
                   </div>
                 )}
 
-                {paypalConfigured && isRejected && (
+                {!isAndroidApp && paypalConfigured && isRejected && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                     {t('subscription.errors.paypal_failed', {
                       defaultValue: 'PayPal failed to load. Check your Client ID, redeploy, or disable ad blockers.',
@@ -585,7 +674,7 @@ export default function SubscriptionPage() {
                   </div>
                 )}
 
-                {paypalConfigured && !isPending && !isRejected && (
+                {!isAndroidApp && paypalConfigured && !isPending && !isRejected && (
                   <PayPalButtons
                     style={{ layout: 'vertical', color: 'blue', shape: 'rect', label: 'subscribe' }}
                     createSubscription={createSubscription}

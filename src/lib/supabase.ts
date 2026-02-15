@@ -91,8 +91,13 @@ export interface DriverSubscription {
   free_days_granted?: number;
   free_access_reason?: string;
   last_payment_amount?: number;
+  last_payment_currency?: string;
   last_payment_date?: string;
   payment_method?: string;
+  provider?: string;
+  provider_product_id?: string;
+  provider_purchase_token?: string;
+  provider_subscription_id?: string;
   paypal_subscription_id?: string;
   auto_renew: boolean;
   created_at: string;
